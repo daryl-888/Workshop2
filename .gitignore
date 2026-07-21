@@ -1,0 +1,17 @@
+# Compiled CUDA binary and its output
+blur
+output.ppm
+
+# Node (only needed to regenerate the slides)
+node_modules/
+package-lock.json
+
+# Build / render artifacts
+*.pdf
+slide-*.jpg
+*.o
+
+# Python / OS
+__pycache__/
+.DS_Store
+Thumbs.db
