@@ -8,6 +8,8 @@ that exact idea to how GPUs power LLMs like ChatGPT.
 This session is **lecture-heavy**: most of the hour is the talk (why GPUs are
 built for AI), with a short, satisfying fill-in-the-blank lab in the middle.
 
+Google slides: https://docs.google.com/presentation/d/1yJQ0e8BnbxDxrRdlc75TmOKeTtUjmWHaUmNj1lCNkbg/edit?usp=sharing
+
 ---
 
 ## Start the lab — one click
