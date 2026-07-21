@@ -10,7 +10,7 @@
 //
 //  Build & run (Colab or any GPU + CUDA machine):
 //      nvcc blur_template.cu -o blur
-//      ./blur                    # reads sample_1920x1280.ppm, writes output.ppm
+//      ./blur                    # reads images/sample_1920x1280.ppm, writes output.ppm
 // ============================================================
 #include <cstdio>
 #include <cstdlib>
@@ -86,10 +86,17 @@ void blurOnGPU(unsigned char *in_h, unsigned char *out_h, int width, int height,
 // ---- Read a binary (P6) PPM image from disk (given) ----
 void ReadImage(unsigned char **imgData, int *width, int *height) {
     FILE *f = fopen("images/sample_1920x1280.ppm", "rb");
-    if (!f) { printf("Could not open sample_1920x1280.ppm\n"); exit(EXIT_FAILURE); }
-    fscanf(f, "P6\n%d %d\n255\n", width, height);
-    *imgData = (unsigned char *)malloc((*width) * (*height) * 3);
-    fread(*imgData, 1, (*width) * (*height) * 3, f);
+    if (!f) { printf("Could not open images/sample_1920x1280.ppm\n"); exit(EXIT_FAILURE); }
+    // PPM header: magic (P6), width, height, maxval — any whitespace between.
+    char magic[3] = {0};
+    int maxval = 0;
+    if (fscanf(f, "%2s %d %d %d", magic, width, height, &maxval) != 4) {
+        printf("Bad PPM header\n"); exit(EXIT_FAILURE);
+    }
+    fgetc(f);  // consume exactly one whitespace byte before the pixel data
+    int n = (*width) * (*height) * 3;
+    *imgData = (unsigned char *)malloc(n);
+    fread(*imgData, 1, n, f);
     fclose(f);
 }
 

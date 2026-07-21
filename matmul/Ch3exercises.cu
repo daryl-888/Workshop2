@@ -5,6 +5,7 @@
   lecture to connect image blur -> matrix multiply -> the math inside LLMs.
 */
 #include <cstdio>
+#include <cmath>   // for ceil() below
 
 // (a) each thread produces one output ROW
 __global__ void MatrixMulRowKernel(float* M, float *N, float* P, int width) {
