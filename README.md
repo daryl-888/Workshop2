@@ -94,5 +94,4 @@ nvcc blur_solution.cu -o blur
 ```
 
 ## License
-
 MIT.
