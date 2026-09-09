@@ -94,26 +94,53 @@ rather than saying "incorrect".
 
 ---
 
-## What the slides need to cover
+## The slides
 
-The notebook deliberately explains very little — you're doing that. The 30
-minutes before the build should land, in this order:
+**`slides/workshop-2-gpu-llms.pptx`** — 18 slides, ~30 minutes, with speaker
+notes on every one. Import into Google Slides with **File → Import slides**.
 
-1. **The hook** — this chip is the reason ChatGPT can answer you.
-2. **CPU vs GPU** — a few brilliant mathematicians versus a stadium of students
-   each doing one sum. Same total work, wildly different shape.
-3. **Two computers, two memories** — the GPU cannot see your data. This is the
-   idea that makes `cudaMemcpy` obvious later instead of arbitrary.
-4. **The five steps** — allocate, copy over, run, copy back, free. Put them on
-   one slide and leave it up during the build.
-5. **Threads, blocks, and "which one am I"** — a diagram of a grid of blocks,
-   and the `blockIdx * blockDim + threadIdx` line. This is the single line they
-   will most need to have seen before typing it.
-6. **A picture is a flat array** — `(row * width + col) * 3`, drawn.
-7. **What we're building** — the before/after photo, so they know where this ends.
+The notebook deliberately explains very little, because you're doing that. The
+deck runs in this order and stops where the typing starts:
 
-Keep the LLM material for *after* the build, when they have something to connect
-it to.
+| Slides | What |
+|---|---|
+| 1–2 | the hook: this chip is the reason ChatGPT can answer you |
+| 3–4 | CPU vs GPU — four brilliant mathematicians vs a stadium of students |
+| 5 | **two computers, two memories** — makes `cudaMemcpy` obvious later instead of arbitrary |
+| 6 | **the five steps** — leave this one up during the build |
+| 7 | **threads, blocks, "which one am I"** — the `blockIdx * blockDim + threadIdx` line, drawn |
+| 8 | **a photo is a flat array** — `(row * width + col) * 3`, drawn |
+| 9–10 | the one idea, and the before/after they're heading for |
+| 11–13 | the three "put the laptop down" dividers, one per build |
+| 14–18 | blur → matrix multiply → language model, and the closing argument |
+
+Slides 7 and 8 are the ones that earn their keep: those are the exact two lines
+students are about to type, and having seen each drawn once is the difference
+between typing along and copying blindly. Don't rush them.
+
+The LLM material is deliberately *after* the build, when they have something to
+connect it to.
+
+### Regenerating the deck
+
+Edit `slides/generate-slides.js` rather than the `.pptx`, then:
+
+```
+npm install                     # once, from the repo root
+node slides/generate-slides.js
+```
+
+The photos on slide 10 come from the workshop's own image and the programs'
+real output. If you change the sample photo, regenerate them too:
+
+```
+python lab/verify.py            # produces build/gray.ppm and build/blur.ppm
+python slides/make_assets.py
+```
+
+Two conventions the deck uses throughout, worth keeping if you edit it:
+**amber means CPU, green means GPU**, and violet means "stop talking, start
+typing."
 
 ---
 

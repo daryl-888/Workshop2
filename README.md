@@ -4,7 +4,10 @@ Session 2 of the **From Zero to GPU** series. You write a program that runs on a
 real GPU, changes a photo using 2.4 million threads at once, and then see why
 that same shape of code is what runs a language model.
 
-Slides: https://docs.google.com/presentation/d/1yJQ0e8BnbxDxrRdlc75TmOKeTtUjmWHaUmNj1lCNkbg/edit?usp=sharing
+Slides: [`slides/workshop-2-gpu-llms.pptx`](slides/workshop-2-gpu-llms.pptx) —
+18 slides with speaker notes, importable into Google Slides via
+**File → Import slides**.
+([the older deck](https://docs.google.com/presentation/d/1yJQ0e8BnbxDxrRdlc75TmOKeTtUjmWHaUmNj1lCNkbg/edit?usp=sharing))
 
 ---
 
@@ -55,7 +58,10 @@ than printing forty lines of compiler output.
 
 | Path | What it is |
 |---|---|
-| `blur.ipynb` | the notebook — the whole session |
+| `blur.ipynb` | the notebook — the live-coded half of the session |
+| `slides/workshop-2-gpu-llms.pptx` | the deck — the first 30 minutes, with speaker notes |
+| `slides/generate-slides.js` | generates the deck. Edit this, not the `.pptx` |
+| `slides/make_assets.py` | renders the deck's photos from the workshop's own image |
 | `lab/gpulab.h` | image loading/saving, timers, error checks (nobody edits this) |
 | `lab/labkit.py` | builds and runs each program, checks the result, draws the pictures |
 | `lab/solutions/` | the finished versions; also what the 🛟 cells print |

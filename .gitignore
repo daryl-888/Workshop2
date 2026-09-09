@@ -24,3 +24,4 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 Thumbs.db
+slides/assets/
