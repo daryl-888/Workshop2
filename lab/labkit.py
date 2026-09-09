@@ -1,20 +1,20 @@
 """
 lab/labkit.py — the notebook's helper. Students never open this file.
 
-It does four things:
-  build + run a topic's .cu file          -> lab.run("t1")
-  check the answer and give a real hint   -> (run() does this for you)
-  show the answer key                     -> lab.solution("t1")
-  draw images so the result is obvious    -> lab.show("gray") / lab.show("blur")
+    lab.setup()             once, at the top
+    lab.run("gray")         compile student/gray.cu, run it, check the result
+    lab.show("gray")        before/after, with a zoomed crop
+    lab.solution("gray")    print the finished version (the catch-up net)
+    lab.llm_math()          turn the measured speed into an LLM-sized number
 
-The point of the checks is that a student who gets ONE thing wrong hears
-about that one thing, instead of staring at 40 lines of nvcc output.
+The checks exist so a student who has fallen behind hears WHAT went wrong
+("your edges are dark", "row and col are swapped") instead of forty lines
+of nvcc output.
 """
 
 import os
 import re
 import subprocess
-import sys
 import textwrap
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,22 +22,16 @@ BUILD = os.path.join(REPO, "build")
 STUDENT = os.path.join(REPO, "student")
 IMAGE = os.path.join(REPO, "images", "sample_1920x1280.ppm")
 
-# topic id -> (title, answer-key filename)
-TOPICS = {
-    "t0": ("Two computers in one box", "t0_hello.cu"),
-    "t1": ("Which thread am I?", "t1_whoami.cu"),
-    "t2": ("Two separate memories", "t2_memory.cu"),
-    "t3": ("Enough threads, not one too far", "t3_grid.cu"),
-    "t4": ("Finding a pixel", "t4_gray.cu"),
-    "t5": ("The blur", "t5_blur.cu"),
-    "t6": ("The race", "t6_race.cu"),
-    "t7": ("Coalesced memory", "t7_matmul.cu"),
+# name -> (human title, finished-version filename, file it writes)
+PROGRAMS = {
+    "gray": ("Greyscale", "gray.cu", "gray.ppm"),
+    "blur": ("Blur", "blur.cu", "blur.ppm"),
+    "race": ("CPU vs GPU", "race.cu", "blur.ppm"),
 }
 
-# Topics you read and run rather than fill in.
-GIVEN = {"t6", "t7"}
+GIVEN = {"race"}          # we run this one, we don't write it
 
-_last = {}          # remembers results between cells (topic 7 -> topic 8)
+_last = {}                # remembers output between cells
 
 OK = "✅"
 NO = "❌"
@@ -46,64 +40,51 @@ DOT = "•"
 
 # ----------------------------------------------------------------- setup
 def setup(quiet=False):
-    """Run once at the top of the notebook."""
     os.makedirs(BUILD, exist_ok=True)
     os.makedirs(STUDENT, exist_ok=True)
     os.chdir(REPO)
 
-    smi = subprocess.run(["nvidia-smi",
-                          "--query-gpu=name,memory.total,driver_version",
-                          "--format=csv,noheader"],
+    smi = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                          capture_output=True, text=True)
     if smi.returncode != 0:
         print(NO + " No GPU attached to this notebook.")
-        print("   Fix it: Runtime -> Change runtime type -> T4 GPU -> Save,")
-        print("   then run this cell again. Nothing below will work until you do.")
+        print("   Runtime -> Change runtime type -> T4 GPU -> Save, then run this again.")
         return False
 
-    nvcc = subprocess.run(["nvcc", "--version"], capture_output=True, text=True)
-    ver = re.search(r"release ([\d.]+)", nvcc.stdout)
     if not quiet:
-        print(OK + " GPU:  " + smi.stdout.strip())
-        print(OK + " nvcc: " + (ver.group(1) if ver else "?"))
-        print(OK + " image:", "found" if os.path.exists(IMAGE) else "MISSING")
-        print("\nYou are ready. Work down the notebook one topic at a time.")
+        print(OK + " GPU:   " + smi.stdout.strip())
+        print(OK + " image: " + ("found" if os.path.exists(IMAGE) else "MISSING"))
+        print("\nYou're set. Follow along from here.")
     return True
 
 
 # ------------------------------------------------------------ build/run
 def _compile(src, exe):
-    return subprocess.run(
-        ["nvcc", "-O2", "-I", REPO, src, "-o", exe],
-        capture_output=True, text=True, cwd=REPO)
+    return subprocess.run(["nvcc", "-O2", "-I", REPO, src, "-o", exe],
+                          capture_output=True, text=True, cwd=REPO)
 
 
 def _compiler_output(c):
-    """nvcc puts diagnostics on stderr with gcc and on stdout with MSVC."""
+    """nvcc writes errors to stderr with gcc, to stdout with MSVC."""
     return ((c.stderr or "") + "\n" + (c.stdout or "")).strip()
 
 
-def _blank_left(src_text):
-    """Did they leave a fill-in marker in the file?"""
-    return re.findall(r"/\*\s*(YOUR CODE[^*]*)\*/", src_text)
+def _unwritten(text):
+    return re.findall(r"/\*\s*(YOUR CODE[^*]*)\*/", text)
 
 
-def _explain_compile_error(err, src_text):
-    print(NO + " It did not compile.\n")
+def _explain_compile_error(err, text):
+    print(NO + " It didn't compile.\n")
 
-    left = _blank_left(src_text)
+    left = _unwritten(text)
     if left:
-        # Almost always the whole story. The compiler's own output here is
-        # just noise about a stray `/*`, so don't bury the real message in it.
-        print("   You still have " + str(len(left)) + " blank"
-              + ("s" if len(left) > 1 else "") + " to fill in:\n")
+        print("   The kernel is still empty — that's the part we write together:")
         for b in left:
             print("     " + DOT + " " + b.strip())
-        print("\n   Replace each /* YOUR CODE: ... */ with real code, then run")
-        print("   the %%writefile cell again before re-running this one.")
+        print("\n   Type it in, run the cell above again (that's what saves the file),")
+        print("   then re-run this one. Or open the 'finished version' cell to catch up.")
         return
 
-    # No blanks left, so this is a genuine mistake. Lead with the first error.
     first = next((l.strip() for l in err.splitlines() if "error" in l.lower()), None)
     if first:
         print("   " + first + "\n")
@@ -112,46 +93,48 @@ def _explain_compile_error(err, src_text):
         print(textwrap.indent(err.strip(), "   "))
 
 
-# Files a topic is expected to produce. Deleted before every run, so a
-# crashed program can never be "checked" against last run's leftovers.
-ARTIFACTS = {"t4": ["gray.ppm"], "t5": ["blur.ppm"], "t6": ["blur.ppm"]}
-
-# What to say when the program compiled but died while running.
-CRASH_HINTS = {
-    "t3": ["A thread wrote outside the array.",
-           "That is what the `if (i < n)` guard is for - check it is still there."],
-    "t4": ["A thread read or wrote outside the image.",
-           "Two usual causes: the bounds test is missing/wrong, or `row` and `col`",
-           "are swapped in the flat index - which sends threads far past the end."],
-    "t5": ["A thread read or wrote outside the image.",
-           "Check the bounds test, and check `row` and `col` are not swapped",
-           "in `(row * w + col) * 3`."],
-}
+CRASH_HINTS = [
+    "A thread read or wrote outside the picture.",
+    "Usual causes: the `if (col < w && row < h)` line is missing,",
+    "or `row` and `col` are the wrong way round in (row * w + col) * 3.",
+]
 
 
-def run(topic, show_output=True):
-    """Compile student/<topic>.cu, run it, then check the answer."""
-    if topic not in TOPICS:
-        raise ValueError("unknown topic " + topic)
+def run(name, show_output=True):
+    """Compile student/<name>.cu, run it, then check what it produced."""
+    if name not in PROGRAMS:
+        raise ValueError("unknown program " + name)
 
-    src = os.path.join(STUDENT, topic + ".cu")
-    exe = os.path.join(BUILD, topic)
+    src = os.path.join(STUDENT, name + ".cu")
+    exe = os.path.join(BUILD, name)
+
     if not os.path.exists(src):
-        if topic in GIVEN:      # topics 6 and 7 are read-and-run, not fill-in
+        if name in GIVEN:
             import shutil
-            shutil.copy(os.path.join(REPO, "lab", "solutions", TOPICS[topic][1]), src)
+            shutil.copy(os.path.join(REPO, "lab", "solutions", PROGRAMS[name][1]), src)
         else:
-            print(NO + " student/" + topic + ".cu does not exist"
-                  + " - run the code cell just above this one first.")
+            print(NO + " student/" + name + ".cu doesn't exist yet.")
+            print("   Run the code cell just above this one first — that's what writes it.")
             return None
 
-    # Clear anything a previous attempt left behind.
-    for f in ARTIFACTS.get(topic, []):
-        p = os.path.join(BUILD, f)
-        if os.path.exists(p):
-            os.remove(p)
+    # Never check against a previous run's leftovers.
+    artifact = os.path.join(BUILD, PROGRAMS[name][2])
+    if os.path.exists(artifact):
+        os.remove(artifact)
 
     text = open(src, encoding="utf-8").read()
+
+    # An empty kernel is perfectly legal C++ - it compiles and quietly writes a
+    # black picture. Catch it here instead, where we can say something useful.
+    holes = _unwritten(text)
+    if holes:
+        print(NO + " The kernel is still empty — that's the part we write together:")
+        for h in holes:
+            print("     " + DOT + " " + h.strip())
+        print("\n   Type it in, run the cell above again (that's what saves the file),")
+        print("   then re-run this one. Or open the 🛟 cell below to catch up.")
+        return None
+
     c = _compile(src, exe)
     if c.returncode != 0:
         _explain_compile_error(_compiler_output(c), text)
@@ -161,71 +144,25 @@ def run(topic, show_output=True):
     out = r.stdout
     if show_output:
         print(out.rstrip())
-    _last[topic] = out
+    _last[name] = out
 
     if r.returncode != 0:
-        print("\n" + NO + " The program stopped early (exit code "
-              + str(r.returncode) + ") - so there is no answer to check.")
+        print("\n" + NO + " It stopped early (exit code " + str(r.returncode) + ").")
         if r.stderr.strip():
             print(textwrap.indent(r.stderr.strip(), "   "))
-        for h in CRASH_HINTS.get(topic, []):
+        for h in CRASH_HINTS:
             print("   " + DOT + " " + h)
         return out
 
     print()
-    _CHECKS[topic](out)
+    _CHECKS[name](out)
     return out
 
 
-def solution(topic):
-    """Print the answer key for a topic."""
-    path = os.path.join(REPO, "lab", "solutions", TOPICS[topic][1])
+def solution(name):
+    """Print the finished version — the catch-up net."""
+    path = os.path.join(REPO, "lab", "solutions", PROGRAMS[name][1])
     print(open(path, encoding="utf-8").read())
-
-
-DEMOS = {
-    "no_copyback": ("d_no_copyback.cu",
-                    "The GPU did the work. Nobody went to collect it."),
-    "host_reads_device": ("d_host_reads_device.cu",
-                          "The CPU follows a GPU pointer. It does not end well."),
-    "no_guard": ("d_no_guard.cu",
-                 "The bounds test, deleted."),
-}
-
-
-def demo(name):
-    """Run one of the deliberately-broken programs in lab/demos/."""
-    if name not in DEMOS:
-        raise ValueError("unknown demo " + name + "; try " + ", ".join(DEMOS))
-    fname, blurb = DEMOS[name]
-    src = os.path.join(REPO, "lab", "demos", fname)
-    exe = os.path.join(BUILD, "demo_" + name)
-
-    print("DEMO: " + blurb)
-    print("source: lab/demos/" + fname)
-    print("-" * 64)
-    c = _compile(src, exe)
-    if c.returncode != 0:
-        print(textwrap.indent(_compiler_output(c), "   "))
-        return
-    r = subprocess.run([exe], capture_output=True, text=True, cwd=REPO)
-    print(r.stdout.rstrip())
-    if r.stderr.strip():
-        print(textwrap.indent(r.stderr.strip(), "   "))
-    print("-" * 64)
-
-    if name == "host_reads_device":
-        if r.returncode == 0 and "somehow read" not in r.stdout:
-            print("The program died right there - it never reached the next printf.")
-        print("exit code " + str(r.returncode) + ": the process was killed for touching")
-        print("memory that does not belong to it. `dev` is a valid address ON THE GPU,")
-        print("and meaningless to the CPU. Two machines, two address spaces.")
-    elif name == "no_copyback":
-        print("This is the failure mode to fear: no crash, no message, just a")
-        print("stale answer. cudaMemcpy is not bookkeeping - it IS the result.")
-    elif name == "no_guard":
-        print("Note that the error came from checkKernel(), not from the launch.")
-        print("Without that call the program would have exited 0 and told you nothing.")
 
 
 # -------------------------------------------------------------- checks
@@ -239,222 +176,127 @@ def _fail(msg, *hints):
         print("   " + DOT + " " + h)
 
 
-def _check_t0(out):
-    gpu = re.findall(r"\[GPU\] hello from thread (\d+)", out)
-    if len(gpu) != 8:
-        return _fail(
-            "Expected 8 GPU lines, got " + str(len(gpu)) + ".",
-            "The launch config <<<blocks, threads>>> decides how many run.",
-            "You want 1 block of 8 threads.")
-    lines = out.splitlines()
-    try:
-        launched = next(i for i, l in enumerate(lines) if "launch returned" in l)
-        first_gpu = next(i for i, l in enumerate(lines) if "[GPU]" in l)
-    except StopIteration:
-        return _fail("Could not find the expected CPU/GPU lines.")
-    if launched > first_gpu:
-        return _fail("The CPU line printed after the GPU lines - that is not the point here.")
-    _pass("8 GPU threads ran, and the CPU carried on without waiting.")
-    print("   Notice the thread numbers are not always in order. Nobody is")
-    print("   taking turns - they genuinely run at the same time.")
-
-
-def _check_t1(out):
-    got = [int(m) for m in re.findall(r"global index\s+(\d+)", out)]
-    if not got:
-        return _fail("No output - did the kernel print anything?")
-    if sorted(got) != list(range(12)):
-        dupes = len(got) - len(set(got))
-        return _fail(
-            "The 12 threads produced " + str(sorted(got)) + ".",
-            "You want exactly 0..11, once each." if not dupes else
-            "Some threads got the SAME index - so they would fight over the same pixel.",
-            "blockIdx.x tells you which block; blockDim.x is how big a block is;",
-            "threadIdx.x is your seat inside it. Skip the earlier blocks, then add your seat.")
-    _pass("0 through 11, once each - every element gets exactly one owner.")
-
-
-def _check_t2(out):
-    m = re.search(r"after:\s*(.*)", out)
-    if not m:
-        return _fail("No 'after:' line printed.")
-    after = [int(x) for x in m.group(1).split()]
-    before = [1, 2, 3, 4, 5, 6, 7, 8]
-    if after == before:
-        return _fail(
-            "The numbers came back unchanged.",
-            "The GPU probably did double them - in ITS memory.",
-            "If you never copy the result back, the CPU is still looking at its own old array.",
-            "Check the direction on the SECOND cudaMemcpy: cudaMemcpyDeviceToHost.")
-    if after == [0] * 8:
-        return _fail(
-            "Everything came back as zero.",
-            "The kernel doubled memory that was never filled in.",
-            "Check the FIRST cudaMemcpy: cudaMemcpyHostToDevice.")
-    if after != [2 * x for x in before]:
-        return _fail("Got " + str(after) + ", expected " + str([2 * x for x in before]) + ".")
-    _pass("There and back again. The data crossed to GPU memory and returned changed.")
-
-
-def _check_t3(out):
-    if "all 1000 elements correct" not in out:
-        return _fail(
-            "Some elements are wrong.",
-            "If the LAST ones are wrong, you launched too few blocks.",
-            "Integer division rounds DOWN: 1000 / 256 = 3, which is only 768",
-            "threads, so the final 232 elements never get an owner.",
-            "Round up instead: (N + THREADS - 1) / THREADS.")
-    m = re.search(r"-> (\d+) threads do nothing", out)
-    _pass("All 1000 correct" + (", with " + m.group(1) + " threads idling harmlessly."
-                                if m else "."))
-    print("   That waste is the deal you accept: you can only ask for whole")
-    print("   blocks, so you over-ask and switch the extras off with an `if`.")
-
-
-def _check_t4(out):
+def _check_gray(out):
     import numpy as np
     got = _read_ppm(os.path.join(BUILD, "gray.ppm"))
     if got is None:
-        return _fail("build/gray.ppm was not written - did the program finish?")
+        return _fail("build/gray.ppm wasn't written — did the program finish?")
     src = _read_ppm(IMAGE)
     ref = (0.21 * src[:, :, 0] + 0.72 * src[:, :, 1] + 0.07 * src[:, :, 2]).astype(np.uint8)
     ref3 = np.dstack([ref, ref, ref])
-    diff = float(np.abs(got.astype(int) - ref3.astype(int)).mean())
-    if diff <= 1.0:
-        _pass("Grey and correct. Every one of 2,457,600 pixels found itself in the array.")
+
+    if float(np.abs(got.astype(int) - ref3.astype(int)).mean()) <= 1.0:
+        _pass("Grey, and correct — all " + f"{src.shape[0] * src.shape[1]:,}"
+              + " pixels found themselves in the array.")
         return
     if got.max() == 0:
-        return _fail("The image is entirely black.",
-                     "Either the kernel wrote nothing, or the result was never copied back.")
-    _diagnose_image(got, ref3, "gray")
+        return _fail("The picture is completely black.",
+                     "Either the kernel wrote nothing, or the result never came back.")
+    if np.array_equal(got, src):
+        return _fail("The output is the same as the input — nothing happened.",
+                     "Check you're writing to `out`, not to `in`.")
+    _diagnose(got, ref3)
 
 
-def _check_t5(out):
+def _check_blur(out):
+    import numpy as np
     got = _read_ppm(os.path.join(BUILD, "blur.ppm"))
     if got is None:
-        return _fail("build/blur.ppm was not written - did the program finish?")
+        return _fail("build/blur.ppm wasn't written — did the program finish?")
     src = _read_ppm(IMAGE)
+
     radius = 3
     m = re.search(r"radius (\d+)", out)
     if m:
         radius = int(m.group(1))
     ref = _cpu_blur(src, radius)
-    import numpy as np
 
     if got.max() == 0:
-        return _fail("The image is entirely black.",
-                     "The kernel wrote nothing, or the result was never copied back.")
+        return _fail("The picture is completely black.",
+                     "Either the kernel wrote nothing, or the result never came back.")
     if np.array_equal(got, src):
-        return _fail("The output is identical to the input - no blurring happened.",
-                     "Check that you are writing to `out`, not reading and rewriting `in`.")
+        return _fail("The output is the same as the input — no blurring happened.",
+                     "Check you're writing to `out`, not to `in`.")
 
-    # The edge pixels are only ~1% of the image, so a whole-image average
-    # would happily hide a wrong edge case. Score the border on its own.
+    # The edge pixels are ~1% of the image, so a whole-picture average would
+    # happily hide a wrong edge case. Score the border separately.
     d = np.abs(got.astype(int) - ref.astype(int))
-    interior = float(d[radius:-radius, radius:-radius].mean())
-    border_mask = np.ones(d.shape[:2], dtype=bool)
-    border_mask[radius:-radius, radius:-radius] = False
-    border = float(d[border_mask].mean())
+    inside = float(d[radius:-radius, radius:-radius].mean())
+    edge_mask = np.ones(d.shape[:2], dtype=bool)
+    edge_mask[radius:-radius, radius:-radius] = False
+    edge = float(d[edge_mask].mean())
 
-    if interior <= 1.0 and border <= 1.0:
-        _pass("Your blur matches a CPU reference to within rounding, edges included.")
-        print("   You just ran your own code on " + f"{src.shape[0]*src.shape[1]:,}"
-              + " GPU threads at once.")
+    if inside <= 1.0 and edge <= 1.0:
+        _pass("Your blur matches a CPU version exactly, edges included.")
+        print("   That ran on " + f"{src.shape[0] * src.shape[1]:,}" + " threads at once.")
         return
 
-    if interior <= 1.0 < border:
+    if inside <= 1.0 < edge:
         return _fail(
-            "The middle of the image is right, but the outermost "
-            + str(radius) + " pixels are wrong (error "
-            + str(round(border, 1)) + "/255 there vs "
-            + str(round(interior, 2)) + " inside).",
-            "A pixel in the corner has no neighbours above or to its left,",
-            "so its window is smaller than " + str((2 * radius + 1) ** 2) + " pixels.",
-            "Divide by the number of neighbours you actually COUNTED, not by",
-            "the full window size - that is what the `n` counter is for.")
+            "The middle is right, but the outermost " + str(radius) + " pixels are dark.",
+            "A corner pixel has no neighbours above or to its left, so its",
+            "square is smaller than " + str((2 * radius + 1) ** 2) + " pixels.",
+            "Divide by `n` — the number you actually counted — not by "
+            + str((2 * radius + 1) ** 2) + ".")
 
-    _diagnose_image(got, ref, "blur")
+    _diagnose(got, ref)
 
 
-def _check_t6(out):
-    m = re.search(r"kernel alone is\s+([\d.]+)x", out)
-    e = re.search(r"end to end it is\s+([\d.]+)x", out)
-    if not m:
-        return _fail("The race did not finish.")
-    _last["t6_kernel_speedup"] = float(m.group(1))
-    _last["t6_e2e_speedup"] = float(e.group(1)) if e else None
+def _check_race(out):
+    k = re.search(r"blur itself was (\d+)x", out)
+    g = re.search(r"BLUR_OPS (\d+)\s+KERNEL_MS ([\d.]+)", out)
+    if g:
+        _last["blur_ops"] = float(g.group(1))
+        _last["kernel_ms"] = float(g.group(2))
+    if not k:
+        return _fail("The race didn't finish.")
+
     _pass("Race complete.")
-    print("   Two numbers worth arguing about:")
-    print("   " + DOT + " the kernel is ~" + m.group(1) + "x faster than one CPU core")
+    print("   Two numbers worth pausing on:")
+    print("   " + DOT + " the blur itself was ~" + k.group(1) + "x faster than one CPU core")
+    e = re.search(r"Counting the copying, (\d+)x", out)
     if e:
-        print("   " + DOT + " but end to end it is only ~" + e.group(1) + "x")
-    print("   The gap between those is the cost of being a GUEST processor:")
-    print("   the GPU cannot touch your data until you ship it over and back.")
-    print("   That is the whole reason real GPU code tries to keep data resident")
-    print("   on the device across many kernels instead of round-tripping each time.")
+        print("   " + DOT + " counting the copying, only ~" + e.group(1) + "x")
+    print("   The gap between them is the price of the GPU being a separate")
+    print("   machine: nothing happens until the data is shipped over and back.")
+    print("   It's also why a model's weights get loaded onto the GPU once and")
+    print("   left there, instead of being sent across for every word.")
 
 
-def _check_t7(out):
-    row = re.search(r"per ROW\s+([\d.]+) ms\s+([\d.]+) GFLOP/s", out)
-    col = re.search(r"per COLUMN\s+([\d.]+) ms\s+([\d.]+) GFLOP/s", out)
-    if not (row and col):
-        return _fail("The benchmark did not finish.")
-    _last["gflops_row"] = float(row.group(2))
-    _last["gflops_col"] = float(col.group(2))
-    _pass("Both kernels computed the same correct answer.")
-    print("   Same math. Same number of threads. Different speed.")
-    print("   The column kernel's neighbouring threads read neighbouring")
-    print("   addresses, so the memory system serves them in one trip.")
-    print("   On a GPU, WHERE you read is often worth more than HOW MUCH you compute.")
+_CHECKS = {"gray": _check_gray, "blur": _check_blur, "race": _check_race}
 
 
-_CHECKS = {"t0": _check_t0, "t1": _check_t1, "t2": _check_t2, "t3": _check_t3,
-           "t4": _check_t4, "t5": _check_t5, "t6": _check_t6, "t7": _check_t7}
-
-
-def _diagnose_image(got, ref, kind):
-    """Try to say something more useful than 'wrong'."""
+def _diagnose(got, ref):
+    """Say something more useful than 'wrong'."""
     import numpy as np
-    r = 8
-    inner_got, inner_ref = got[r:-r, r:-r], ref[r:-r, r:-r]
-    inner = float(np.abs(inner_got.astype(int) - inner_ref.astype(int)).mean())
-    overall = float(np.abs(got.astype(int) - ref.astype(int)).mean())
-
-    if inner <= 1.0 < overall:
-        return _fail(
-            "The middle of the image is right, but the edges are wrong.",
-            "Pixels at the border have a smaller neighbourhood.",
-            "Only add up neighbours that are actually inside the image,",
-            "and divide by how many you COUNTED - not by the full window size.")
-
-    # channel mix-up?
-    for perm, name in [((1, 0, 2), "red and green"), ((0, 2, 1), "green and blue"),
-                       ((2, 1, 0), "red and blue")]:
+    for perm, label in [((1, 0, 2), "red and green"), ((0, 2, 1), "green and blue"),
+                        ((2, 1, 0), "red and blue")]:
         if float(np.abs(got[:, :, perm].astype(int) - ref.astype(int)).mean()) <= 1.0:
-            return _fail("Your colour channels are swapped (" + name + ").",
-                         "Bytes go R, G, B in that order: idx+0, idx+1, idx+2.")
+            return _fail("Your colour channels are swapped (" + label + ").",
+                         "The bytes go red, green, blue: i + 0, i + 1, i + 2.")
 
-    if overall > 40:
-        _fail("The output is badly wrong (average error " + str(round(overall, 1)) + "/255).",
-              "Most likely the pixel index. The array is flat and row-major:",
+    err = float(np.abs(got.astype(int) - ref.astype(int)).mean())
+    if err > 40:
+        _fail("The picture is badly wrong (average error " + str(round(err, 1)) + "/255).",
+              "Most likely the address maths. The picture is one long flat array:",
               "row `row` starts row*w pixels in, then col along, 3 bytes each.",
-              "Swapping row and col here is the classic mistake.")
+              "Swapping row and col is the classic one.")
     else:
-        _fail("Close but not right (average error " + str(round(overall, 1)) + "/255).",
-              "Check the divide: use a float divide by the number of neighbours counted.")
+        _fail("Close, but not right (average error " + str(round(err, 1)) + "/255).",
+              "Check the divide at the end.")
 
 
 # --------------------------------------------------------------- images
 def _read_ppm(path):
     import numpy as np
+    from PIL import Image
     if not os.path.exists(path):
         return None
-    from PIL import Image
     return np.asarray(Image.open(path).convert("RGB"))
 
 
 def _cpu_blur(src, radius):
-    """Reference blur: average of the in-bounds neighbours only."""
+    """Reference blur: the average of the in-bounds neighbours only."""
     import numpy as np
     a = src.astype(np.float64)
     h, w, _ = a.shape
@@ -469,13 +311,11 @@ def _cpu_blur(src, radius):
         k = 2 * radius + 1
         return c[k:, k:] - c[:-k, k:] - c[k:, :-k] + c[:-k, :-k]
 
-    s = boxsum(pad)
-    n = boxsum(cnt)[:, :, None]
-    return (s / n).astype(np.uint8)          # truncates, same as (unsigned char) cast
+    return (boxsum(pad) / boxsum(cnt)[:, :, None]).astype(np.uint8)
 
 
 def _busiest_crop(img, size=320):
-    """Pick the most detailed square region, so a blur is actually visible."""
+    """Pick the most detailed square, so the effect is actually visible."""
     import numpy as np
     g = img.astype(np.float32).mean(axis=2)
     h, w = g.shape
@@ -489,62 +329,65 @@ def _busiest_crop(img, size=320):
 
 
 def show(which="blur"):
-    """Draw before/after, plus a zoomed crop where the effect is actually visible."""
+    """Before and after, plus a zoomed crop where you can really see it."""
     import matplotlib.pyplot as plt
-    path = os.path.join(BUILD, which + ".ppm")
-    before = _read_ppm(IMAGE)
-    after = _read_ppm(path)
+    after = _read_ppm(os.path.join(BUILD, which + ".ppm"))
     if after is None:
-        print(NO + " " + path + " not found - run the topic above first.")
+        print(NO + " Nothing to show yet — run the program above first.")
         return
+    before = _read_ppm(IMAGE)
 
     size = 320
     y, x = _busiest_crop(before, size)
     label = {"blur": "blurred on the GPU", "gray": "greyscaled on the GPU"}.get(which, which)
 
     fig, ax = plt.subplots(2, 2, figsize=(13, 9))
-    ax[0][0].imshow(before);                      ax[0][0].set_title("before (full)")
-    ax[0][1].imshow(after);                       ax[0][1].set_title("after - " + label)
-    ax[1][0].imshow(before[y:y + size, x:x + size]); ax[1][0].set_title("before (zoomed in)")
-    ax[1][1].imshow(after[y:y + size, x:x + size]);  ax[1][1].set_title("after (zoomed in)")
-    for r in ax:
-        for a in r:
+    ax[0][0].imshow(before)
+    ax[0][0].set_title("before")
+    ax[0][1].imshow(after)
+    ax[0][1].set_title("after — " + label)
+    ax[1][0].imshow(before[y:y + size, x:x + size])
+    ax[1][0].set_title("before, zoomed in")
+    ax[1][1].imshow(after[y:y + size, x:x + size])
+    ax[1][1].set_title("after, zoomed in")
+    for row in ax:
+        for a in row:
             a.axis("off")
-    fig.suptitle("Full image on top; the bottom row is a " + str(size) +
-                 "x" + str(size) + " crop - that is where you can really see it.",
+    fig.suptitle("Top row: the whole picture. Bottom row: a "
+                 + str(size) + "x" + str(size) + " crop, where it's obvious.",
                  fontsize=11)
     plt.tight_layout()
     plt.show()
 
 
-# ---------------------------------------------------- topic 8: the payoff
+# ------------------------------------------------------- the last cell
 def llm_math(params_billions=175.0):
-    """Turn the number the student just measured into an LLM-sized statement."""
-    g_row = _last.get("gflops_row")
-    g_col = _last.get("gflops_col")
-    if g_col is None:
-        print("Run topic 7 first - this uses the speed YOUR kernel actually hit.")
+    """Put one word of a large model on the same scale as the blur they wrote."""
+    ops = _last.get("blur_ops")
+    ms = _last.get("kernel_ms")
+    if ops is None or ms is None:
+        print("Run the CPU-vs-GPU cell above first — this uses your own numbers.")
         return
 
-    # A forward pass costs roughly 2 FLOPs per parameter per token.
-    flops_per_token = 2.0 * params_billions * 1e9
-    gflop_per_token = flops_per_token / 1e9
+    per_word = 2.0 * params_billions * 1e9      # ~2 operations per parameter, per word
+    blurs = per_word / ops
+    seconds = blurs * ms / 1000.0
 
-    print("Your numbers, from the kernel you just ran:")
-    print("   one thread per ROW      " + format(g_row, ".1f") + " GFLOP/s")
-    print("   one thread per COLUMN   " + format(g_col, ".1f") + " GFLOP/s")
-    print()
-    print("A " + format(params_billions, ".0f") + "B-parameter model costs about "
-          + "2 x params = " + format(gflop_per_token, ",.0f")
-          + " GFLOP for ONE token.")
-    print()
-    slow = gflop_per_token / g_row
-    fast = gflop_per_token / g_col
-    print("   at your ROW kernel's speed:     " + format(slow, ".1f") + " s per token")
-    print("   at your COLUMN kernel's speed:  " + format(fast, ".1f") + " s per token")
-    print()
-    print("A real deployment answers in tens of milliseconds per token. The gap")
-    print("is not magic - it is the same tricks, taken further: keeping data in")
-    print("fast on-chip memory, tensor cores, smaller number formats, and many")
-    print("GPUs at once. But the shape of the work is exactly what you wrote:")
-    print("one thread per output element, millions at a time.")
+    print("Your blur, just now:")
+    print("   " + format(ops / 1e6, ",.0f") + " million additions, in "
+          + format(ms, ".2f") + " milliseconds\n")
+    print("One word out of a " + format(params_billions, ".0f")
+          + "-billion-parameter model:")
+    print("   roughly 2 x parameters = " + format(per_word / 1e9, ",.0f")
+          + " billion arithmetic operations\n")
+    print("   That is about " + format(blurs, ",.0f") + " of your blurs. For ONE word.")
+    print("   At your blur's speed, that's roughly " + format(seconds, ".1f")
+          + " seconds per word —")
+    print("   and a real system answers in a few hundredths of a second.\n")
+    print("The gap is engineering, not magic: keeping the numbers in the GPU's")
+    print("fastest memory, hardware built specifically for matrix multiplication,")
+    print("smaller number formats, and many GPUs at once. What never changes is")
+    print("the SHAPE of the work — one thread per output number, millions at a")
+    print("time, exactly like the blur you wrote.\n")
+    print("(Rough comparison: the blur adds bytes, a model multiplies decimals.")
+    print(" It's for scale, not a benchmark.)")
