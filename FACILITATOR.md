@@ -1,127 +1,153 @@
 # Facilitator Guide — Workshop 2: Run Your Code on a GPU
 
-For you, the person running the session. Covers the lecture plan, the core
-through-line to teach, timing, Colab logistics, and common stumbles. Students
-don't need this file.
+For you, the person running the session. Students don't need this file.
 
-## Format: lecture-heavy, short lab
+## Format: the notebook *is* the lecture
 
-Workshop 1 was hands-on the whole hour. This one flips: it's mostly **lecture**
-(why GPUs are the engine of modern AI), wrapped around a short, high-payoff
-**fill-in-the-blank lab** (blur an image on a real GPU in Colab). The lab exists
-to make the lecture concrete — students *feel* "one thread per output element"
-in their fingers before you scale that idea up to LLMs.
+This session is not "a talk with a lab in the middle". The notebook is the spine:
+you teach each topic **at its cell**, students fill in two or three lines, the
+check confirms it, and you move on. Every claim you make in the talk has a cell
+below it that demonstrates the claim.
+
+Nine topics, ~45 minutes hands-on with talk interleaved. Each is one idea and
+one screen — you can project the cell you are teaching without scrolling.
 
 ## The one idea to land: "one thread per output element"
 
-Everything in this workshop is the same idea at three scales. Teach it as a
-single through-line and the LLM payoff lands naturally:
+The same idea at three scales. Teach it as a single through-line and the LLM
+payoff lands on its own:
 
-1. **Blur (what they code today).** Each output pixel = the average of its
-   neighbourhood. Every pixel is independent, so you assign **one GPU thread per
-   pixel** and compute millions at once. That's the whole kernel.
+1. **Blur (Topic 5).** Each output pixel is the average of its neighbourhood.
+   Every pixel is independent, so you assign **one GPU thread per pixel** and do
+   millions at once. That's the whole kernel.
 
-2. **Matrix multiply (`matmul/Ch3exercises.cu`).** Zoom out one step: instead of
-   "average a neighbourhood," each output element is a **dot product** — a sum of
-   products of a row and a column. Still independent per element, so again: **one
-   thread per output element.** Same launch pattern, same indexing math
-   (`row*width + col`) they just used in the blur. Show both kernels side by
-   side; the shape is identical.
+2. **Matrix multiply (Topic 7).** Zoom out one step: instead of "average a
+   neighbourhood", each output element is a **dot product**. Still independent
+   per element, so again: one thread per output element. Same launch pattern,
+   same index math they just used. Show the blur and the matmul side by side —
+   the shape is identical.
 
-3. **LLMs (the punchline).** A transformer is *mostly* matrix multiplies:
-   - Turning tokens into vectors, and the Q/K/V projections — matmuls.
-   - Attention scores = Q times K-transpose — a matmul. Softmax, then times V —
-     another matmul.
-   - The feed-forward layers — the biggest matmuls of all.
-   A single response from an LLM is **billions of these multiply-adds**, all of
-   the "one thread per output element" form. The GPU does them by the thousand
-   simultaneously. That is *why* GPUs, not CPUs, run AI.
+3. **LLMs (Topic 8).** A transformer is *mostly* matrix multiplies: token
+   embedding and the Q/K/V projections; attention scores Q×Kᵀ; softmax then ×V;
+   and the feed-forward layers, the biggest of all. One token is billions of
+   multiply-adds, all of the "one thread per output element" form.
 
-If students remember one sentence, make it: **"A GPU is thousands of tiny
-workers each doing one simple sum — and an LLM is just a mountain of those
-sums."**
+If they remember one sentence: **"A GPU is thousands of tiny workers each doing
+one simple sum — and an LLM is a mountain of those sums."**
 
-## Two supporting points (in the slides)
+## What is new in this version, and why
 
-- **CPU vs GPU.** A CPU has a few very fast cores (a few brilliant
-  mathematicians); a GPU has thousands of simple cores (a stadium of students
-  each doing one arithmetic problem). For "the same small math a million times,"
-  the stadium wins overwhelmingly.
-- **Coalesced memory** (from the Ch3 notes). Threads should read *neighbouring*
-  memory addresses so the hardware can fetch them in one go. It's why the column
-  matmul beats the row matmul, and it's a big part of why GPU code is fast. Keep
-  this light — one slide, one analogy (grabbing a whole row of items in one
-  reach vs walking back and forth).
+The lab used to be one 130-line file with nine blanks scattered through it. Three
+things were wrong with that, and each fix has a topic behind it:
+
+- **You could not teach a topic at a cell.** Host/device, indexing, memory, and
+  grid sizing were interleaved with PPM parsing and `main`. Now the plumbing is
+  in `lab/gpulab.h` and each editable cell is only the CUDA for one idea.
+- **Feedback was all-or-nothing.** Nothing compiled until all nine blanks were
+  right. Now every topic compiles, runs and checks on its own, so a student gets
+  five wins before the blur instead of zero.
+- **Heterogeneity was asserted, never shown.** There was no CPU baseline, no
+  timing, and no demonstration of what separate memory actually costs. Topics 2,
+  3 and 6 now *show* it: the silent missing copy-back, the CPU dying on a device
+  pointer, the out-of-bounds write, and a measured race.
+
+## The three moments worth slowing down for
+
+1. **Topic 0, the output order.** `[CPU] launch returned instantly` prints
+   *before* the GPU's lines. Launching is asynchronous. Almost every confusing
+   CUDA error later comes from this. Ask the room why the CPU line came first.
+
+2. **Topic 2's `no_copyback` demo.** No crash, no warning — just the old answer
+   sitting there looking plausible. This is the failure mode they will actually
+   hit. Let it land before you move on.
+
+3. **Topic 6, the two speedup numbers.** The kernel is ~1000× faster than one
+   CPU core; end-to-end it is far less, and most of the GPU's time was spent
+   *moving bytes*. That gap is the entire cost of being a guest processor. It is
+   also the setup for "this is why model weights live on the GPU permanently" —
+   the best bridge you have into Topic 8.
+
+Exact numbers vary by machine. On a T4 expect the CPU blur around 1–3 s and the
+kernel in single-digit milliseconds. **Run it yourself the morning of, and put
+your own numbers on a slide** — a measured number beats a claimed one.
 
 ## Rough timing (60 minutes)
 
 | Segment | Time |
 |---|---|
-| Hook: "this chip runs ChatGPT" + recap of Workshop 1 | 5 min |
-| Lecture: CPU vs GPU, data parallelism | 8 min |
-| Lecture: blur = one thread per pixel (show the kernel) | 7 min |
-| **Lab: fill in the blanks in Colab, see the blur** | 18 min |
-| Lecture: blur -> matrix multiply (show both kernels) | 8 min |
-| Lecture: matmul -> attention/FFN -> LLMs | 10 min |
-| By the numbers + wrap / Q&A | 4 min |
+| Hook: "this chip runs ChatGPT" + recap of Workshop 1 | 4 min |
+| Topic 0–1: two computers, and which thread am I | 8 min |
+| Topic 2–3: separate memory, grid sizing (incl. the three demos) | 10 min |
+| Topic 4: 2D indexing, greyscale — first image on screen | 6 min |
+| **Topic 5: the blur** | 12 min |
+| Topic 6: the race, CPU vs GPU | 6 min |
+| Topic 7: coalescing | 6 min |
+| Topic 8: blur → matmul → LLM, wrap, Q&A | 8 min |
 
-If the lab runs long, cut the coalesced-memory slide, not the LLM payoff.
+**If you are running short,** cut Topic 7 (coalescing) — it is the most
+self-contained. Do not cut Topic 6; the measured speedup is what makes Topic 8
+land. Topics 0–5 are the spine and should not be skipped.
+
+**If you have 90 minutes,** have them raise `BLUR_SIZE` to 15 and 31 after
+Topic 5 (20× the work, same wall clock), and talk through `lab/gpulab.h`.
 
 ## Colab pre-flight (do once before class)
 
-The student flow is one click: they open `blur.ipynb` in Colab from the "Open in
-Colab" badge in the README, and the notebook's first cell **clones this repo**
-(image + files) automatically. No uploads.
-
-1. **Make the repo PUBLIC.** This is essential — `git clone` inside Colab has no
-   GitHub login, so a private repo can't be downloaded and the one-click flow
-   breaks. (Repo → Settings → General → Change visibility → Public.)
-2. Confirm the badge URL matches your repo. It points to
+1. **Make the repo PUBLIC.** Essential — `git clone` inside Colab has no GitHub
+   login, so a private repo breaks the one-click flow.
+   (Repo → Settings → General → Change visibility → Public.)
+2. Check the badge URL matches your repo:
    `colab.research.google.com/github/<user>/<repo>/blob/main/blur.ipynb`.
 3. Open the notebook yourself, set **Runtime → T4 GPU**, and run it end to end.
-   To sanity-check the *solution* compiles, temporarily paste `blur_solution.cu`
-   into the `%%writefile` cell (or run `!nvcc blur_solution.cu -o blur && ./blur`
-   after the clone cell) and confirm the before/after shows.
-4. Put the "Open in Colab" badge + "switch to T4 GPU first" on a slide.
-5. Have students click the badge and switch to GPU **before** the lecture starts,
-   so the slow first GPU allocation is done by lab time.
+   To check everything still builds without doing that by hand, run the
+   pre-flight script from the repo root (in Colab, or on any CUDA machine):
+
+   ```
+   python lab/verify.py
+   ```
+
+   It confirms every template still has its blanks, that the blanks really do
+   block compilation, that the intended answers compile and pass their checks,
+   and that the read-and-run topics and demos work. Takes about a minute.
+   If you edit the notebook's code cells, edit `lab/make_notebook.py` and
+   regenerate — then re-run `verify.py`.
+4. Have students click the badge and switch to GPU **before** you start talking,
+   so the slow first GPU allocation is already done.
+5. Colab's left sidebar shows the topic outline (the notebook sets
+   `toc_visible`). Use it to jump between topics while presenting.
 
 ## Common stumbles & quick fixes
 
-- **"nvcc: command not found" or CUDA errors on launch** → GPU runtime isn't on.
-  Runtime → Change runtime type → T4 GPU. This is the #1 issue; check it first.
-- **Compile error pointing at a `/* TODO */` line** → that blank is empty or
-  wrong. The message names the line. Good — it means the "must fill all blanks"
-  design is working.
-- **Output image looks identical / wrong colours** → usually TODO 4 (pixel
-  index) or TODO 5 (the average). Re-derive `(row * w + col) * 3`.
-- **Forgot to upload the image** → the run prints "Could not open
-  sample_1920x1280.ppm". Re-run the upload cell.
-- **Free Colab GPU unavailable at peak times** → rare, but have students pair up
-  on one notebook as a fallback, or use CPU to at least compile (it won't run the
-  kernel without a GPU).
-
-## Adding error checks back (optional, post-lab)
-
-We stripped the per-call error handling so the program stays readable. The tidy
-way to bring it back is one macro:
-
-```c
-#define CUDA_CHECK(call)                                                     \
-  do { cudaError_t _e = (call);                                              \
-       if (_e != cudaSuccess) {                                             \
-         printf("CUDA error %s at %s:%d\n", cudaGetErrorString(_e),          \
-                __FILE__, __LINE__); exit(EXIT_FAILURE); } } while (0)
-
-// then wrap calls:  CUDA_CHECK(cudaMalloc((void**)&in_d, size));
-```
-
-One line per call instead of a five-line `if` block — same safety, none of the
-clutter that made the original hard to read. Good "here's how the pros do it"
-footnote once the blur works.
+- **"No GPU attached to this notebook"** from the setup cell → Runtime → Change
+  runtime type → T4 GPU, then re-run it. This is the #1 issue; check it first.
+- **"You still have N blanks to fill in"** → they edited the cell but did not
+  re-run it. `%%writefile` only saves when the cell is executed. Re-run the
+  code cell, *then* the check cell.
+- **A check fails with a specific hint** → read the hint aloud; it names the
+  actual mistake (wrong copy direction, divided by 49 instead of the count,
+  row/col swapped, channels swapped). That is the whole point of it.
+- **"CRASHED WHILE RUNNING: an illegal memory access"** in Topic 4 or 5 → almost
+  always `row` and `col` swapped in the flat index, or a broken bounds test.
+- **Free Colab GPU unavailable at peak times** → rare; have students pair up on
+  one notebook.
+- **A student is stuck and the room is moving** → point them at the collapsed
+  "Reveal the answer" cell under the topic. Better they read the answer and stay
+  with the class than fall two topics behind.
 
 ## Slides
 
-`slides/workshop-2-gpu-llms.pptx` — the lecture deck, built around the
-through-line above. Facilitator notes are in each slide's speaker notes.
-Regenerate from `slides/generate-slides.js` after edits.
+The deck lives in Google Slides (link at the top of the README). There is no
+`slides/` folder in this repo — earlier versions of these docs referred to one
+that never existed.
+
+Worth putting on slides, since the notebook cannot: the **CPU vs GPU** analogy
+(a few brilliant mathematicians vs a stadium of students each doing one sum),
+and **your own measured numbers** from Topic 6 and Topic 7.
+
+## If you want to extend it
+
+The natural Topic 9 is **tiling / shared memory**: cooperatively loading a patch
+into a block's fast shared memory so neighbouring threads stop re-reading the
+same values from slow memory. It is the biggest remaining win in both the blur
+and the matmul, and it explains why CUDA groups threads into blocks at all —
+which Topic 1 raises and deliberately leaves hanging.

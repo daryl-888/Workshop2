@@ -1,6 +1,15 @@
-# Compiled CUDA binary and its output
+# Built binaries and generated images
+build/
 blur
 output.ppm
+*.exe
+*.exp
+*.lib
+*.o
+*.obj
+
+# Where the notebook writes the student's edited kernels
+student/
 
 # Node (only needed to regenerate the slides)
 node_modules/
@@ -9,9 +18,9 @@ package-lock.json
 # Build / render artifacts
 *.pdf
 slide-*.jpg
-*.o
 
 # Python / OS
 __pycache__/
+.ipynb_checkpoints/
 .DS_Store
 Thumbs.db
