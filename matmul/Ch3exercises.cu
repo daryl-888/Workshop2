@@ -3,6 +3,12 @@
   Two matrix-multiply kernels — one thread per output ROW, one per output COLUMN —
   plus notes on coalesced vs non-coalesced memory access. Used in the Workshop 2
   lecture to connect image blur -> matrix multiply -> the math inside LLMs.
+
+  NOTE: this is the original textbook-shaped version, kept for the slides. The
+  one the notebook actually runs is lab/solutions/t7_matmul.cu — the same two
+  kernels, but at a size where the difference is measurable, with CUDA-event
+  timing and a correctness check, so students SEE the coalescing win instead of
+  being told about it. Prefer that one for anything you want to execute.
 */
 #include <cstdio>
 #include <cmath>   // for ceil() below
