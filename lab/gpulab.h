@@ -60,6 +60,19 @@ static GpuLabUnbuffered _gpulab_unbuffered;
 static void checkKernel(const char* name) {
     cudaError_t err = cudaGetLastError();          // did the launch fail?
     if (err != cudaSuccess) {
+        // cudaGetLastError also returns errors from calls made BEFORE the
+        // launch (a bad cudaMemcpy, say) that nobody checked. Those have a
+        // recognisable shape - say so, rather than blaming the kernel.
+        if (err == cudaErrorInvalidValue || err == cudaErrorInvalidMemcpyDirection ||
+            err == cudaErrorInvalidDevicePointer) {
+            printf("\nA CUDA call BEFORE the launch of '%s' failed: %s\n", name,
+                   cudaGetErrorString(err));
+            printf("  Usually one of:\n");
+            printf("   - cudaMemcpy with the wrong direction (over = cudaMemcpyHostToDevice)\n");
+            printf("   - cudaMemcpy arguments swapped (destination comes FIRST, then source)\n");
+            printf("   - cudaMalloc never ran, so the device pointer holds junk\n");
+            exit(EXIT_FAILURE);
+        }
         printf("\nKernel '%s' FAILED TO LAUNCH: %s\n", name, cudaGetErrorString(err));
         printf("  (usually a bad grid/block size - e.g. over 1024 threads per block)\n");
         exit(EXIT_FAILURE);

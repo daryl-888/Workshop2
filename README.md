@@ -4,10 +4,8 @@ Session 2 of the **From Zero to GPU** series. You write a program that runs on a
 real GPU, changes a photo using 2.4 million threads at once, and then see why
 that same shape of code is what runs a language model.
 
-Slides: [`slides/workshop-2-gpu-llms.pptx`](slides/workshop-2-gpu-llms.pptx) —
-18 slides with speaker notes, importable into Google Slides via
-**File → Import slides**.
-([the older deck](https://docs.google.com/presentation/d/1yJQ0e8BnbxDxrRdlc75TmOKeTtUjmWHaUmNj1lCNkbg/edit?usp=sharing))
+Slides (the live deck, in Google Slides):
+https://docs.google.com/presentation/d/1p3c9z2zf7kZ3sfyIAIcz6V8udwOS6iddQH3RoGLokRE/edit?usp=sharing
 
 ---
 
@@ -37,20 +35,22 @@ Nothing is a puzzle; every cell is either typed together or just run.
 | § | What | You do |
 |---|---|---|
 | 1 | Two computers in one box | read — CPU vs GPU, separate memory, the five steps |
-| 2 | **Greyscale** | write the kernel together; see the picture change |
-| 3 | **Blur** | same program, new maths in the middle |
+| 2 | **Build 1: greyscale** | type every CUDA call and the kernel into `student/main.cu` |
+| 3 | **Build 2: blur** | go back to the same file; change only the kernel |
 | 4 | CPU vs GPU, timed | run it; see where the time actually goes |
 | 5 | What this has to do with ChatGPT | blur → matrix multiply → language models |
 
-Both programs ship with the **host code already written and the kernel body
-empty**. That's the point: the five steps never change, so the second build
-feels like "only the middle is different." Under each is a collapsed
-🛟 **finished version** cell, so anyone who falls behind can catch up in one
-click.
+**One file, all session.** Reading and saving the photo is given — it's file
+I/O, not CUDA. Everything CUDA is typed: `cudaMalloc`, both `cudaMemcpy`s, the
+`dim3` grid and the `<<< >>>` launch, `cudaFree`, and the kernel. Each has a
+STEP slide with the exact line on it. Build 2 edits the same cell, so the fact
+that the host code doesn't change is something students *do*, not something
+they're told. Under each build is a collapsed 🛟 **finished version** cell.
 
-If a picture comes out wrong, the check underneath names the actual mistake —
-dark edges, swapped colour channels, row and column the wrong way round — rather
-than printing forty lines of compiler output.
+`lab.run()` works out on its own whether the file is currently the greyscale or
+the blur, and if it's wrong it names the step: a `cudaMemcpy` with the wrong
+direction, a missing copy back (black picture), row and column swapped in the
+kernel, edges divided by 49 instead of the neighbour count.
 
 ---
 
@@ -59,12 +59,13 @@ than printing forty lines of compiler output.
 | Path | What it is |
 |---|---|
 | `blur.ipynb` | the notebook — the live-coded half of the session |
-| `slides/workshop-2-gpu-llms.pptx` | the deck — the first 30 minutes, with speaker notes |
-| `slides/generate-slides.js` | generates the deck. Edit this, not the `.pptx` |
-| `slides/make_assets.py` | renders the deck's photos from the workshop's own image |
+| `slides/step-slides.pptx` | the 8 STEP slides that carry the typed code; import into the Google Slides deck |
+| `slides/generate-step-slides.js` | generates them, pulling the code verbatim from `lab/solutions/` |
+| `slides/workshop-2-gpu-llms.pptx` | the original 18-slide deck the Google Slides deck was imported from |
+| `slides/generate-slides.js`, `make_assets.py` | generate that original deck and its photos |
 | `lab/gpulab.h` | image loading/saving, timers, error checks (nobody edits this) |
 | `lab/labkit.py` | builds and runs each program, checks the result, draws the pictures |
-| `lab/solutions/` | the finished versions; also what the 🛟 cells print |
+| `lab/solutions/` | the finished `main.cu` for each build; what the 🛟 cells print, and what the STEP slides show |
 | `lab/extras/` | material cut from the session — see below |
 | `lab/make_notebook.py` | generates `blur.ipynb`. Edit this, not the JSON |
 | `lab/verify.py` | facilitator pre-flight: proves everything still builds and runs |
