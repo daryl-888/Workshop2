@@ -35,20 +35,21 @@ Nothing is a puzzle; every cell is either typed together or just run.
 | § | What | You do |
 |---|---|---|
 | 1 | Two computers in one box | read — CPU vs GPU, separate memory, the five steps |
-| 2 | **Build 1: greyscale** | type every CUDA call and the kernel into `student/main.cu` |
-| 3 | **Build 2: blur** | go back to the same file; change only the kernel |
+| 2 | **Build 1: greyscale** | type all of `main()` and the kernel into `student/main.cu` |
+| 3 | **Build 2: blur** | new file, `main()` already written; copy the blur kernel from the slide |
 | 4 | CPU vs GPU, timed | run it; see where the time actually goes |
 | 5 | What this has to do with ChatGPT | blur → matrix multiply → language models |
 
-**One file, all session.** Reading and saving the photo is given — it's file
-I/O, not CUDA. Everything CUDA is typed: `cudaMalloc`, both `cudaMemcpy`s, the
-`dim3` grid and the `<<< >>>` launch, `cudaFree`, and the kernel. Each has a
-STEP slide with the exact line on it. Build 2 edits the same cell, so the fact
-that the host code doesn't change is something students *do*, not something
-they're told. Under each build is a collapsed 🛟 **finished version** cell.
+**Build 1 is typed from an empty `main()`** — setup, `cudaMalloc`, both
+`cudaMemcpy`s, the `dim3` grid and the `<<< >>>` launch, `cudaFree`,
+`return 0`, and the kernel body. Each piece has a STEP slide with the exact
+lines on it. **Build 2 is a second file with that same `main()` already
+written**; students copy only the blur kernel from its slide, and see for
+themselves that the host code didn't change. Under each build is a collapsed
+🛟 **finished version** cell.
 
-`lab.run()` works out on its own whether the file is currently the greyscale or
-the blur, and if it's wrong it names the step: a `cudaMemcpy` with the wrong
+`lab.run()` checks Build 1 and `lab.run("blur")` checks Build 2; when something
+is wrong it names the step: a `cudaMemcpy` with the wrong
 direction, a missing copy back (black picture), row and column swapped in the
 kernel, edges divided by 49 instead of the neighbour count.
 

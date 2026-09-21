@@ -171,7 +171,7 @@ function checkpoint(s, text, y = 6.35) {
 function insertTag(s, where) {
   // Where this slide goes in the live deck. Faint, bottom-right, delete after import.
   s.addText("insert: " + where, {
-    x: W - M - 6, y: 7.17, w: 6, h: 0.25, fontFace: F.mono, fontSize: 8,
+    x: W - M - 6, y: 7.24, w: 6, h: 0.22, fontFace: F.mono, fontSize: 8,
     color: C.faint, align: "right", isTextBox: true, margin: 0,
   });
 }
@@ -400,31 +400,36 @@ stepSlide({
     "Recovery: lifebelt. Anyone still broken should paste it now, before Build 2.",
 });
 
-/* ═══════════════════════════════════ BUILD 2 · STEP 3 again (blur) */
+/* ═══════════════════════════════════ BUILD 2 · the blur kernel */
+// The student copies the ENTIRE function from this slide into student/blur.cu,
+// whose main() is already written. Blank lines dropped to fit.
+const blurFn = blurKernelFull.filter((l) => l.trim() !== "");
 stepSlide({
-  kicker: "BUILD 2 · STEP 3 AGAIN", title: "Same file. Change only the kernel.",
-  code: ["#define BLUR_SIZE 3          // under the #include, at the top",
-         "// ...then replace everything INSIDE  if (col < w && row < h) {  with:",
-         ...blurBody],
-  codeH: 4.35, codeSize: 10.5, codeW: 7.9, checkpointY: 6.5,
+  kicker: "BUILD 2 · THE KERNEL", title: "New file, same main(). Copy this function.",
+  code: blurFn,
+  codeH: 4.5, codeSize: 9.2, codeW: 8.2, checkpointY: 6.6,
   read: [
-    "Add the #define at the top.",
-    "col, row and the if are already there — leave them.",
-    "Walk the square around me. Skip neighbours that fall off the picture. Count the ones I used.",
+    "student/blur.cu — main() is already there. This goes above it.",
+    "col, row, the if — same start as greyscale.",
+    "Walk the square around me. Skip neighbours off the picture. Count the ones I used.",
     "Divide by n — what I counted — not by 49.",
-    "Every CUDA call in main(): untouched.",
   ],
-  readSize: 13,
-  checkpoint: "Run the cell, then lab.run().  Expect: ✅ Blur, edges included — then lab.show().",
+  readSize: 12.5,
+  checkpoint: "Run the cell, then lab.run(\"blur\").  Expect: ✅ Blur, edges included — then lab.show().",
   where: "after your Build 2 divider",
-  notes:
-    "Scroll to main() first and say 'nothing down here changes'. That's the lesson.\n\n" +
-    "Concept: the host code is a reusable shell. Only what one thread does is different.\n" +
-    "Expected: '✅ Blur, and it matches a CPU version exactly - edges included.'\n" +
-    "Pause: on 'divide by n'. Ask why not 49. Someone will get it - corners.\n" +
-    "Stumble: /49 - the check says 'the outermost 3 pixels are dark'. Or forgetting the " +
-    "#define - won't compile, names BLUR_SIZE.\n" +
+  notes: [
+    "This whole function gets typed into student/blur.cu, above the main() that is",
+    "already written there. Open the cell first and scroll through main(): 'you typed",
+    "exactly this twenty minutes ago - only the kernel's name is different.'",
+    "",
+    "Concept: the host code is a reusable shell. What the GPU DOES lives in the kernel.",
+    "Expected: '✅ Blur, and it matches a CPU version exactly - edges included.'",
+    "Pause: on 'divide by n'. Ask why not 49. Someone will get it - corners.",
+    "Stumble: /49 - the check says 'the outermost 3 pixels are dark'. A greyscale kernel",
+    "pasted here by mistake - the check says 'greyscale, not blurred'. Wrong function name -",
+    "won't compile; main() calls blurKernel.",
     "Then: BLUR_SIZE 15, re-run. Twenty times the work, same instant.",
+  ].join("\n"),
 });
 
 const out = path.join(__dirname, "step-slides.pptx");

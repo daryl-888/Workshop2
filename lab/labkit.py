@@ -2,7 +2,8 @@
 lab/labkit.py — the notebook's helper. Students never open this file.
 
     lab.setup()             once, at the top
-    lab.run("gray")         compile student/gray.cu, run it, check the result
+    lab.run()               compile student/main.cu, run it, check the result
+    lab.run("blur")         same for student/blur.cu
     lab.show("gray")        before/after, with a zoomed crop
     lab.solution("gray")    print the finished version (the catch-up net)
     lab.llm_math()          turn the measured speed into an LLM-sized number
@@ -22,14 +23,17 @@ BUILD = os.path.join(REPO, "build")
 STUDENT = os.path.join(REPO, "student")
 IMAGE = os.path.join(REPO, "images", "sample_1920x1280.ppm")
 
-# The student edits ONE file all session - student/main.cu - and turns the
-# greyscale kernel into a blur in place. run() works out which one it is.
+# Two student programs. Build 1 (student/main.cu) is typed from an empty
+# main(); Build 2 (student/blur.cu) has main() filled in and only the kernel
+# is typed. Both write build/out.ppm.
 #
 # name -> (finished-version filename, file the program writes)
 PROGRAMS = {
     "main": ("gray.cu", "out.ppm"),
+    "blur": ("blur.cu", "out.ppm"),
     "race": ("race.cu", "blur.ppm"),
 }
+EXPECT = {"main": "gray", "blur": "blur"}     # what each program should produce
 SOLUTIONS = {"gray": "gray.cu", "blur": "blur.cu", "race": "race.cu"}
 
 GIVEN = {"race"}          # we run this one, we don't write it
@@ -219,8 +223,8 @@ def _radius(text):
     return int(m.group(1)) if m else 3
 
 
-def _check_main(out):
-    """One file, two possible right answers. Work out which one they're on."""
+def _check_image(out, expect):
+    """Compare build/out.ppm against the greyscale and blur references."""
     import numpy as np
     got = _read_ppm(os.path.join(BUILD, "out.ppm"))
     if got is None:
@@ -241,16 +245,20 @@ def _check_main(out):
     edge_mask[radius:-radius, radius:-radius] = False
     edge = float(d_blur[edge_mask].mean())
 
-    # ---- the two right answers ----
+    # ---- the right answers ----
     if d_grey <= 1.0:
         _last["stage"] = "gray"
+        if expect == "blur":
+            return _fail("This picture is greyscale, not blurred.",
+                         "The blur kernel isn't doing its job yet - is the whole function",
+                         "from the slide in the file, with BLUR_SIZE defined above it?")
         _pass("Greyscale, and correct — all " + pixels + " pixels found themselves in the array.")
         print("   Five CUDA calls and one kernel. That was the whole program.")
         return
     if inside <= 1.0 and edge <= 1.0:
         _last["stage"] = "blur"
         _pass("Blur, and it matches a CPU version exactly — edges included.")
-        print("   Same five calls as before. Only the kernel changed.")
+        print("   Same five calls as before. Only the kernel is different.")
         print("   That ran on " + pixels + " threads at once.")
         return
 
@@ -265,7 +273,7 @@ def _check_main(out):
         return _fail("The output is the same as the input — nothing happened.",
                      "Check the kernel writes to `out`, not to `in`.")
 
-    blur_attempt = _looks_like_blur(text)
+    blur_attempt = expect == "blur" or _looks_like_blur(text)
     if blur_attempt and inside <= 1.0 < edge:
         return _fail(
             "The middle is right, but the outermost " + str(radius) + " pixels are dark.",
@@ -299,7 +307,9 @@ def _check_race(out):
     print("   left there, instead of being sent across for every word.")
 
 
-_CHECKS = {"main": _check_main, "race": _check_race}
+_CHECKS = {"main": lambda out: _check_image(out, "gray"),
+           "blur": lambda out: _check_image(out, "blur"),
+           "race": _check_race}
 
 
 def _diagnose(got, ref):

@@ -16,7 +16,7 @@ change.
 |---|---|---|
 | Slides | ~30 min | why GPUs exist, the five steps, threads, and what we're about to build |
 | Live build 1 | ~16 min | all of `main()` + the greyscale kernel, in one file |
-| Live build 2 | ~8 min | same file, replace the kernel body |
+| Live build 2 | ~8 min | new file, `main()` given, copy the blur kernel from the slide |
 | Run the race | ~5 min | CPU vs GPU, and where the time goes |
 | The payoff | ~7 min | blur → matrix multiply → language models |
 
@@ -38,13 +38,12 @@ one simple sum — and a language model is a mountain of those sums."**
 
 ## The live build
 
-**One file, all session:** `student/main.cu`, in one Colab cell. Students build
-greyscale in it, then go back and turn the same file into a blur. **`main()`
-starts empty and every line of it is typed** — the setup, the five CUDA steps,
-`return 0`. The kernel signature is given; its body is typed. The only things
-not written by hand are four small helpers that live in `lab/gpulab.h`
-(`loadImage`, `makeImage`, `saveImage`, `freeImage`) — students still type the
-calls to them.
+Two cells. **Build 1, `student/main.cu`: `main()` starts empty and every line
+of it is typed** — the setup, the five CUDA steps, `return 0` — plus the kernel
+body. **Build 2, `student/blur.cu`: `main()` is already written; only the
+kernel is typed**, copied whole from its slide. The only things never written
+by hand are four small helpers in `lab/gpulab.h` (`loadImage`, `makeImage`,
+`saveImage`, `freeImage`) — students still type the calls to them.
 
 Each typed piece has a STEP slide with the exact code on it. Students type from
 the slide; you narrate. If someone runs the cell early they get *"Some parts are
@@ -69,23 +68,25 @@ Expect `✅ Greyscale, and correct`. Then `lab.show()`. Let them look.
 
 ### Build 2 — blur (~8 min)
 
-**Don't open a new cell.** Scroll back up to `student/main.cu`. First scroll to
-`main()` and say *"nothing down here changes"* — that is the lesson, not an aside.
-Then the one STEP slide for Build 2: add `#define BLUR_SIZE 3` at the top, and
-replace what's inside `if (col < w && row < h)` with the body on the slide.
+**A new cell, `student/blur.cu`.** Its `main()` is already written — the same
+five steps they just typed, with the kernel's name changed to `blurKernel`.
+Open it and scroll through `main()` first: *"you typed exactly this twenty
+minutes ago."* That is the lesson — the host code is a shell; what the GPU does
+lives in the kernel.
 
-| You type | You say |
+Then they **copy the whole `blurKernel` function from the slide** into the
+marked spot above `main()`. One slide, one function, nothing else to type.
+
+| You point at | You say |
 |---|---|
-| `#define BLUR_SIZE 3` | "Radius 3 — a 7 by 7 square." |
+| `col`, `row`, the `if` | "Same start as greyscale." |
 | `int r = 0, g = 0, b = 0; int n = 0;` | "Add up the neighbours, and count how many we found." |
-| the two `for` loops | "Walk the square around me." |
+| the two `for` loops | "Walk the square around me. Radius 3 is 7 by 7." |
 | `if (nrow >= 0 && nrow < h && ...)` | "A corner pixel has no neighbours above it. Skip those." |
-| `int i = (nrow * w + ncol) * 3;` | "Same address maths — for the neighbour instead of me." |
 | the three `/ n` lines | "Divide by what we counted, not by 49, or the edges come out dark." |
 
-Run the cell, then `lab.run()` — it works out on its own that the file is now the
-blur. Expect `✅ Blur ... edges included`. `lab.show()`, and point at the **bottom
-row** — the zoomed crop.
+Run the cell, then `lab.run("blur")`. Expect `✅ Blur ... edges included`.
+`lab.show()`, and point at the **bottom row** — the zoomed crop.
 
 Then `BLUR_SIZE` to `15`, re-run. Twenty times the work, same instant.
 
@@ -131,7 +132,7 @@ copy; edit it there. The repo holds two generated `.pptx` files that feed it:
 | 5 | STEP 3 · the kernel | after 4 |
 | 6 | STEP 4 · cudaMemcpy ← | after 5 |
 | 7 | STEP 5 · cudaFree *(checkpoint strip)* | after 6 |
-| 8 | Build 2 · STEP 3 again *(checkpoint strip)* | right after your **Build 2** divider |
+| 8 | Build 2 · the kernel — the whole `blurKernel` function *(checkpoint strip)* | right after your **Build 2** divider |
 
 The code on those slides is pulled verbatim from `lab/solutions/*.cu` when
 the file is generated, so the slide and the notebook cannot drift.
@@ -143,9 +144,9 @@ changed shape:
   About eight lines." with **"We type every CUDA call and the kernel — each
   has a STEP slide with the exact line. Reading and saving the photo is given."**
 - *Build 2 — blur*: replace "Notebook section 3. Scroll to the bottom of the
-  cell first: it is identical to last time." with **"Same cell, same file.
-  Scroll to main() first — nothing there changes. Add one #define and replace
-  the inside of the kernel's if."**
+  cell first: it is identical to last time." with **"New cell, student/blur.cu.
+  main() is already written — scroll through it, it's yours from Build 1. Copy
+  the kernel from the next slide into the marked spot."**
 
 Running order with the additions: the lecture slides are unchanged and stop at
 "What we're about to build"; then the Build 1 divider; then slides 1–7 as you

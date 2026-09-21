@@ -1,16 +1,16 @@
-// Build 2 — blur.  (the finished version of student/main.cu)
+// Build 2 — blur.  (the finished version of student/blur.cu)
 //
-// The SAME file as greyscale. Only the kernel body changed, plus one
-// #define. Every CUDA call in main() is untouched.
+// main() is the same five steps as greyscale, already written. The only
+// thing typed in this file is the kernel - copied from the slide.
 #include "lab/gpulab.h"
 
 #define BLUR_SIZE 3     // radius -> a 7x7 box around each pixel
 
 // ---------------------------------------------------------------
-//  STEP 3, the kernel — now "average my neighbours" instead of
-//  "mix my own three colours".
+//  THE KERNEL — "average my neighbours" instead of "mix my own
+//  three colours". This is the part you type.
 // ---------------------------------------------------------------
-__global__ void imageKernel(unsigned char* out, unsigned char* in, int w, int h) {
+__global__ void blurKernel(unsigned char* out, unsigned char* in, int w, int h) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;    // same as before
     int row = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -40,7 +40,7 @@ __global__ void imageKernel(unsigned char* out, unsigned char* in, int w, int h)
 }
 
 // ---------------------------------------------------------------
-//  The host code — IDENTICAL to greyscale. Not one character changed.
+//  The host code — the same five steps as greyscale, already written.
 // ---------------------------------------------------------------
 int main() {
     // setup — the photo into CPU memory, an empty picture the same size, two GPU pointers
@@ -58,8 +58,8 @@ int main() {
     // STEP 3 — decide how many threads, launch one per pixel, then wait and ask if it worked
     dim3 block(16, 16);
     dim3 grid((img.w + 15) / 16, (img.h + 15) / 16);
-    imageKernel<<<grid, block>>>(out_d, in_d, img.w, img.h);
-    checkKernel("imageKernel");
+    blurKernel<<<grid, block>>>(out_d, in_d, img.w, img.h);
+    checkKernel("blurKernel");
 
     // STEP 4 — bring the answer home: GPU -> CPU, then save it
     cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost);
