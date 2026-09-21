@@ -55,6 +55,71 @@ kernel, edges divided by 49 instead of the neighbour count.
 
 ---
 
+## How the pieces fit
+
+Everything the student touches is on the right; everything that keeps it honest
+is on the left. The code on the STEP slides, the 🛟 catch-up cells, and the
+pre-flight tests all come from the same three files in `lab/solutions/`, so
+they cannot disagree with each other.
+
+```mermaid
+flowchart LR
+    classDef student fill:#1b1a33,stroke:#8b80f9,color:#eceef2
+    classDef gen fill:#0f2a1c,stroke:#46d07e,color:#eceef2
+    classDef gpu fill:#2a2210,stroke:#f5b301,color:#eceef2
+    classDef quiet fill:#0a0c12,stroke:#272c38,color:#a7b0bc
+
+    subgraph COLAB["Google Colab · what the student sees"]
+        direction TB
+        C1["student/main.cu<br/>Build 1 · main() and kernel typed"]:::student
+        C2["student/blur.cu<br/>Build 2 · main() given, kernel typed"]:::student
+        RUN["lab.run()"]:::student
+        SHOW["lab.show()"]:::student
+        LIFE["🛟 finished-version cells"]:::student
+        C1 --> RUN
+        C2 --> RUN
+        RUN --> SHOW
+    end
+
+    subgraph LAB["lab/ · plumbing students never open"]
+        direction TB
+        KIT["labkit.py<br/>compile · run · check · draw"]
+        HDR["gpulab.h<br/>PPM I/O · timers · checkKernel()"]
+        SOL["solutions/<br/>gray.cu · blur.cu · race.cu"]
+    end
+
+    subgraph GPU["the GPU"]
+        direction TB
+        NVCC["nvcc"]:::gpu
+        PPM["build/out.ppm"]:::gpu
+    end
+
+    RUN --> KIT
+    KIT -- "refuses while a<br/>/* YOUR CODE */ remains" --> NVCC
+    HDR -. "#include" .-> NVCC
+    NVCC --> PPM
+    PPM -- "vs numpy reference:<br/>✅ or *which STEP* is wrong" --> KIT
+    LIFE -- prints --> SOL
+
+    subgraph TOOLING["generated from one source"]
+        direction TB
+        MK["make_notebook.py"]:::gen
+        NB["blur.ipynb"]
+        GSTEP["generate-step-slides.js"]:::gen
+        STEP["step-slides.pptx<br/>8 STEP slides, code verbatim"]
+        GS(["Google Slides · the live deck"])
+        VER["verify.py<br/>pre-flight on a real GPU"]:::quiet
+        MK --> NB
+        GSTEP --> STEP -- "File → Import slides" --> GS
+    end
+
+    SOL -- "code pulled verbatim" --> GSTEP
+    SOL -- "mutated + run" --> VER
+    NB -.-> COLAB
+```
+
+---
+
 ## What's in this folder
 
 | Path | What it is |
