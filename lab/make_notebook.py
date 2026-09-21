@@ -54,23 +54,30 @@ you're caught up. Nothing later depends on you having typed it yourself.
 """)
 
 code('''#@title ▶ Run me first — sets everything up { display-mode: "form" }
-import os, sys, subprocess
+import os, sys, subprocess, importlib
 
 REPO = "/content/Workshop2"
-if not os.path.isdir(REPO):
-    if os.path.isdir("lab") and os.path.isdir("images"):
-        REPO = os.getcwd()                       # already inside the repo (running locally)
-    else:
-        subprocess.run(["git", "clone", "--depth", "1", "--quiet",
-                        "https://github.com/daryl-888/Workshop2.git", REPO])
+URL = "https://github.com/daryl-888/Workshop2.git"
+
+if os.path.isdir(os.path.join(REPO, ".git")):
+    # A runtime that has been alive for a while still has an OLD copy of the
+    # workshop. Bring it up to date. (Your own files in student/ are untouched.)
+    subprocess.run(["git", "-C", REPO, "fetch", "--depth", "1", "--quiet", "origin", "main"])
+    subprocess.run(["git", "-C", REPO, "reset", "--hard", "--quiet", "origin/main"])
+elif os.path.isdir("lab") and os.path.isdir("images"):
+    REPO = os.getcwd()                           # running locally, inside the repo
+else:
+    subprocess.run(["git", "clone", "--depth", "1", "--quiet", URL, REPO])
 
 if not os.path.isdir(REPO):
     raise SystemExit("Couldn't download the workshop. Ask the facilitator to make "
                      "the repo PUBLIC (Settings -> General -> Change visibility).")
 
 os.chdir(REPO)
-sys.path.insert(0, os.path.join(REPO, "lab"))
+if os.path.join(REPO, "lab") not in sys.path:
+    sys.path.insert(0, os.path.join(REPO, "lab"))
 import labkit as lab
+lab = importlib.reload(lab)                      # in case an older copy was already loaded
 lab.setup()''', {"cellView": "form"})
 
 # ══════════════════════════════════════════════════════ part 1: the idea
