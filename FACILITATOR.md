@@ -15,8 +15,8 @@ change.
 | | Time | What |
 |---|---|---|
 | Slides | ~30 min | why GPUs exist, the five steps, threads, and what we're about to build |
-| Live build 1 | ~8 min | the greyscale kernel |
-| Live build 2 | ~10 min | the blur kernel |
+| Live build 1 | ~14 min | every CUDA call + the greyscale kernel, in one file |
+| Live build 2 | ~8 min | same file, replace the kernel body |
 | Run the race | ~5 min | CPU vs GPU, and where the time goes |
 | The payoff | ~7 min | blur → matrix multiply → language models |
 
@@ -38,111 +38,126 @@ one simple sum — and a language model is a mountain of those sums."**
 
 ## The live build
 
-Both programs ship with the host code already written and the **kernel body
-empty**. You type the kernel; the five steps below it never change. That's
-deliberate — the second build should feel like "only the middle changed."
+**One file, all session:** `student/main.cu`, in one Colab cell. Students build
+greyscale in it, then go back and turn the same file into a blur. Reading and
+saving the photo is given (it's file I/O, not CUDA). **Every CUDA call is
+typed** — the five steps in `main()` and the kernel.
 
-If someone runs a cell before you've typed the kernel, they get
-*"The kernel is still empty — that's the part we write together"*, not a wall of
-compiler output.
+Each typed piece has a STEP slide with the exact code on it. Students type from
+the slide; you narrate. If someone runs the cell early they get *"Some parts are
+still empty — the ones we type together"* with the steps listed, not compiler
+output.
 
-### Build 1 — greyscale (~8 min)
+### Build 1 — greyscale (~14 min)
 
-Type it in this order, saying the thing in the right-hand column:
+Have the five-steps slide in your head; the STEP slides carry the code. In order:
+
+| STEP slide | You type | You say |
+|---|---|---|
+| device pointers | *(nothing — 30 s)* | "`in_d` is an ordinary variable. Its *value* is an address on the other machine." |
+| 1 · cudaMalloc | `cudaMalloc(&in_d, img.bytes);` ×2 | "The **address of** in_d, so CUDA can write the GPU address into it. Say the & out loud." |
+| 2 · cudaMemcpy → | one line | "Where to, where from, how much, which way. Destination **first**." |
+| 3 · the launch | `dim3 block`, `dim3 grid`, `<<< >>>` | "16×16 is 256. 120 across, 80 down. 2,457,600. `+15 /16` rounds up." |
+| 3 · the kernel | the body | "Which pixel am I, am I on the picture, where does it live — then the grey line." |
+| 4 · cudaMemcpy ← | one line | "Same call, reversed. Skip it and you get black — no error." |
+| 5 · cudaFree | ×2 | "One free per malloc. Nothing does this for you." Then **run**. |
+
+Expect `✅ Greyscale, and correct`. Then `lab.show()`. Let them look.
+
+### Build 2 — blur (~8 min)
+
+**Don't open a new cell.** Scroll back up to `student/main.cu`. First scroll to
+`main()` and say *"nothing down here changes"* — that is the lesson, not an aside.
+Then the one STEP slide for Build 2: add `#define BLUR_SIZE 3` at the top, and
+replace what's inside `if (col < w && row < h)` with the body on the slide.
 
 | You type | You say |
 |---|---|
-| `int col = blockIdx.x * blockDim.x + threadIdx.x;` | "Threads arrive in blocks. This is how one thread works out which column it owns." |
-| `int row = blockIdx.y * blockDim.y + threadIdx.y;` | "Same again, downwards. Now this thread knows its pixel." |
-| `if (col < w && row < h) {` | "We asked for slightly more threads than pixels. The leftovers have to sit still." |
-| `int i = (row * w + col) * 3;` | "The picture is one long line of bytes. Skip whole rows, then along, times three." |
-| the three-channel weighted sum | "And that's the only line that's actually about greyscale." |
-
-Then run it. **Point at the launch line printing 2,457,600 threads** — that number
-is the moment the room gets it. Show the picture.
-
-### Build 2 — blur (~10 min)
-
-Open the blur cell and point out that the bottom half is *identical*. Then:
-
-| You type | You say |
-|---|---|
-| the same `col` / `row` / `if` lines | "Copied. Every kernel starts this way." |
-| `int r = 0, g = 0, b = 0; int n = 0;` | "We're going to add up the neighbours, and count how many we found." |
-| the two `for` loops | "Walk the square around me. Radius 3 means 7 by 7." |
+| `#define BLUR_SIZE 3` | "Radius 3 — a 7 by 7 square." |
+| `int r = 0, g = 0, b = 0; int n = 0;` | "Add up the neighbours, and count how many we found." |
+| the two `for` loops | "Walk the square around me." |
 | `if (nrow >= 0 && nrow < h && ...)` | "A corner pixel has no neighbours above it. Skip those." |
-| `int i = (nrow * w + ncol) * 3;` | "Same address maths as before — just for the neighbour instead of me." |
-| the three `/ n` lines | "Divide by what we counted, not by 49. Otherwise the edges come out dark." |
+| `int i = (nrow * w + ncol) * 3;` | "Same address maths — for the neighbour instead of me." |
+| the three `/ n` lines | "Divide by what we counted, not by 49, or the edges come out dark." |
 
-Run it, show the picture, and point at the **bottom row of the figure** — the
-zoomed crop. At full size a 7-pixel blur on a 1920-pixel photo is easy to miss;
-zoomed in it's obvious.
+Run the cell, then `lab.run()` — it works out on its own that the file is now the
+blur. Expect `✅ Blur ... edges included`. `lab.show()`, and point at the **bottom
+row** — the zoomed crop.
 
-Then have them change `BLUR_SIZE` to `15` and re-run. Twenty times the work,
-same instant result. That lands harder than anything you can say.
+Then `BLUR_SIZE` to `15`, re-run. Twenty times the work, same instant.
 
 ### Nobody gets stranded
 
-Under each program is a collapsed 🛟 **"Fell behind? The finished version"**
-cell. Say out loud, once, near the start: *"if you lose the thread, open that,
-copy it, and you're back with us."* Then don't slow down for individual typos —
-point at the 🛟 cell and keep moving.
+Under each build is a collapsed 🛟 **"Fell behind? The finished version"** cell —
+the complete file. Say once, early: *"if you lose the thread, open that, copy the
+whole thing over your cell, and you're back with us."* Don't slow down for
+individual typos.
 
-If someone's picture comes out wrong, the check under the cell names the actual
-mistake (dark edges, swapped colour channels, row and col the wrong way round)
-rather than saying "incorrect".
+The check names the actual mistake, and since the host code is typed now it
+distinguishes host from kernel:
+
+| what they see | what it means |
+|---|---|
+| *A CUDA call BEFORE the launch failed … look at STEP 1 and STEP 2* | wrong `cudaMemcpy` direction, arguments swapped, or a `cudaMalloc` missing |
+| *The picture is completely black … check STEP 4* | the copy back is missing |
+| *outside the picture … this one is in the kernel* | `row`/`col` swapped, or the `if` missing |
+| *the outermost 3 pixels are dark* | divided by 49 instead of `n` |
 
 ---
 
 ## The slides
 
-**`slides/workshop-2-gpu-llms.pptx`** — 18 slides, ~30 minutes, with speaker
-notes on every one. Import into Google Slides with **File → Import slides**.
+**The live deck is Google Slides** (link in the README) — that is the master
+copy; edit it there. The repo holds two generated `.pptx` files that feed it:
 
-The notebook deliberately explains very little, because you're doing that. The
-deck runs in this order and stops where the typing starts:
+- `slides/workshop-2-gpu-llms.pptx` — the original 18-slide deck, from which
+  the Google Slides deck was imported. Historical now; your edits live in
+  Google Slides, not here.
+- **`slides/step-slides.pptx`** — 8 slides carrying the code students type,
+  in the same grammar as the Workshop 3 deck (green `STEP` kicker, verbatim
+  code panel, violet READ IT AS card). **Add these to the Google Slides deck
+  with File → Import slides.** Each carries a faint `insert:` tag bottom-right
+  saying where it goes; delete the tag after placing.
 
-| Slides | What |
-|---|---|
-| 1–2 | the hook: this chip is the reason ChatGPT can answer you |
-| 3–4 | CPU vs GPU — four brilliant mathematicians vs a stadium of students |
-| 5 | **two computers, two memories** — makes `cudaMemcpy` obvious later instead of arbitrary |
-| 6 | **the five steps** — leave this one up during the build |
-| 7 | **threads, blocks, "which one am I"** — the `blockIdx * blockDim + threadIdx` line, drawn |
-| 8 | **a photo is a flat array** — `(row * width + col) * 3`, drawn |
-| 9–10 | the one idea, and the before/after they're heading for |
-| 11–13 | the three "put the laptop down" dividers, one per build |
-| 14–18 | blur → matrix multiply → language model, and the closing argument |
+| # | slide | goes |
+|---|---|---|
+| 1 | What `in_d` actually is | right after your **Build 1** divider |
+| 2 | STEP 1 · cudaMalloc | after 1 |
+| 3 | STEP 2 · cudaMemcpy → | after 2 |
+| 4 | STEP 3 · the launch | after 3 |
+| 5 | STEP 3 · the kernel | after 4 |
+| 6 | STEP 4 · cudaMemcpy ← | after 5 |
+| 7 | STEP 5 · cudaFree *(checkpoint strip)* | after 6 |
+| 8 | Build 2 · STEP 3 again *(checkpoint strip)* | right after your **Build 2** divider |
 
-Slides 7 and 8 are the ones that earn their keep: those are the exact two lines
-students are about to type, and having seen each drawn once is the difference
-between typing along and copying blindly. Don't rush them.
+The code on those slides is pulled verbatim from `lab/solutions/*.cu` when
+the file is generated, so the slide and the notebook cannot drift.
 
-The LLM material is deliberately *after* the build, when they have something to
-connect it to.
+**Two text edits to make in your existing divider slides**, since the build
+changed shape:
 
-### Regenerating the deck
+- *Build 1 — greyscale*: replace "We write the kernel at the top together.
+  About eight lines." with **"We type every CUDA call and the kernel — each
+  has a STEP slide with the exact line. Reading and saving the photo is given."**
+- *Build 2 — blur*: replace "Notebook section 3. Scroll to the bottom of the
+  cell first: it is identical to last time." with **"Same cell, same file.
+  Scroll to main() first — nothing there changes. Add one #define and replace
+  the inside of the kernel's if."**
 
-Edit `slides/generate-slides.js` rather than the `.pptx`, then:
+Running order with the additions: the lecture slides are unchanged and stop at
+"What we're about to build"; then the Build 1 divider; then slides 1–7 as you
+type; then the Build 2 divider and slide 8. Budget ~40 minutes of slides
+including the typing — the STEP slides *are* the build, not extra lecture.
+
+### Regenerating
 
 ```
-npm install                     # once, from the repo root
-node slides/generate-slides.js
+node slides/generate-step-slides.js      # after editing lab/solutions/*.cu
 ```
 
-The photos on slide 10 come from the workshop's own image and the programs'
-real output. If you change the sample photo, regenerate them too:
-
-```
-python lab/verify.py            # produces build/gray.ppm and build/blur.ppm
-python slides/make_assets.py
-```
-
-Two conventions the deck uses throughout, worth keeping if you edit it:
-**amber means CPU, green means GPU**, and violet means "stop talking, start
-typing."
-
----
+The visual conventions, if you edit by hand: dark canvas, **green = STEP kicker
+and CUDA tokens**, **violet = READ IT AS**, **amber = the one thing not to miss**,
+green strip = checkpoint.
 
 ## Pre-flight (do this once, before class)
 
@@ -168,10 +183,13 @@ typing."
 
 - **"No GPU attached to this notebook"** → Runtime → Change runtime type → T4
   GPU. This is the number one issue; check it first.
-- **"The kernel is still empty"** → they typed into the cell but didn't run it.
+- **"Some parts are still empty"** → they typed into the cell but didn't run it.
   `%%writefile` only saves when the cell is executed. Run the code cell, *then*
-  the one under it.
-- **Black picture** → the kernel wrote nothing, or the copy back is missing.
+  the check.
+- **"A CUDA call BEFORE the launch failed"** → STEP 1 or 2: a `cudaMemcpy` with
+  the wrong direction or swapped arguments, or a missing `cudaMalloc`. The
+  message lists all three.
+- **Black picture** → STEP 4, the copy back, is missing. The check says so.
 - **Crash: "an illegal memory access"** → almost always `row` and `col` swapped
   in `(row * w + col) * 3`, or the bounds check missing.
 - **Dark edges on the blur** → divided by 49 instead of `n`. The check says so.

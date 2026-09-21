@@ -22,12 +22,15 @@ BUILD = os.path.join(REPO, "build")
 STUDENT = os.path.join(REPO, "student")
 IMAGE = os.path.join(REPO, "images", "sample_1920x1280.ppm")
 
-# name -> (human title, finished-version filename, file it writes)
+# The student edits ONE file all session - student/main.cu - and turns the
+# greyscale kernel into a blur in place. run() works out which one it is.
+#
+# name -> (finished-version filename, file the program writes)
 PROGRAMS = {
-    "gray": ("Greyscale", "gray.cu", "gray.ppm"),
-    "blur": ("Blur", "blur.cu", "blur.ppm"),
-    "race": ("CPU vs GPU", "race.cu", "blur.ppm"),
+    "main": ("gray.cu", "out.ppm"),
+    "race": ("race.cu", "blur.ppm"),
 }
+SOLUTIONS = {"gray": "gray.cu", "blur": "blur.cu", "race": "race.cu"}
 
 GIVEN = {"race"}          # we run this one, we don't write it
 
@@ -93,14 +96,35 @@ def _explain_compile_error(err, text):
         print(textwrap.indent(err.strip(), "   "))
 
 
-CRASH_HINTS = [
-    "A thread read or wrote outside the picture.",
-    "Usual causes: the `if (col < w && row < h)` line is missing,",
-    "or `row` and `col` are the wrong way round in (row * w + col) * 3.",
-]
+# What to say when the program compiled but stopped early. gpulab.h already
+# printed WHAT failed; these say WHERE to look, keyed on its wording.
+CRASH_HINTS = {
+    "BEFORE the launch": [
+        "A CUDA call before the launch failed — so look at STEP 1 and STEP 2, not the kernel.",
+        "STEP 1: are BOTH cudaMalloc lines there, with `&in_d` and `&out_d`?",
+        "STEP 2: cudaMemcpy(in_d, img.data, img.bytes, cudaMemcpyHostToDevice)",
+        "        destination first, source second, and the direction is host TO device.",
+    ],
+    "CRASHED WHILE RUNNING": [
+        "A thread read or wrote outside the picture — this one is in the kernel.",
+        "Usual causes: the `if (col < w && row < h)` line is missing,",
+        "or `row` and `col` are the wrong way round in (row * w + col) * 3.",
+    ],
+    "FAILED TO LAUNCH": [
+        "The launch itself was rejected — look at STEP 3.",
+        "dim3 block(16, 16) is 256 threads; more than 1024 per block is not allowed.",
+    ],
+}
 
 
-def run(name, show_output=True):
+def _crash_hints(out):
+    for key, hints in CRASH_HINTS.items():
+        if key in out:
+            return hints
+    return ["It stopped before writing the picture. Read the message above."]
+
+
+def run(name="main", show_output=True):
     """Compile student/<name>.cu, run it, then check what it produced."""
     if name not in PROGRAMS:
         raise ValueError("unknown program " + name)
@@ -111,28 +135,29 @@ def run(name, show_output=True):
     if not os.path.exists(src):
         if name in GIVEN:
             import shutil
-            shutil.copy(os.path.join(REPO, "lab", "solutions", PROGRAMS[name][1]), src)
+            shutil.copy(os.path.join(REPO, "lab", "solutions", PROGRAMS[name][0]), src)
         else:
             print(NO + " student/" + name + ".cu doesn't exist yet.")
-            print("   Run the code cell just above this one first — that's what writes it.")
+            print("   Run the code cell above first — that's what writes the file.")
             return None
 
     # Never check against a previous run's leftovers.
-    artifact = os.path.join(BUILD, PROGRAMS[name][2])
+    artifact = os.path.join(BUILD, PROGRAMS[name][1])
     if os.path.exists(artifact):
         os.remove(artifact)
 
     text = open(src, encoding="utf-8").read()
+    _last["source"] = text
 
-    # An empty kernel is perfectly legal C++ - it compiles and quietly writes a
-    # black picture. Catch it here instead, where we can say something useful.
+    # A comment where code should be is perfectly legal C++ - the file compiles
+    # and quietly does nothing. Catch it here, where we can say something useful.
     holes = _unwritten(text)
     if holes:
-        print(NO + " The kernel is still empty — that's the part we write together:")
+        print(NO + " Some parts are still empty — the ones we type together:")
         for h in holes:
             print("     " + DOT + " " + h.strip())
-        print("\n   Type it in, run the cell above again (that's what saves the file),")
-        print("   then re-run this one. Or open the 🛟 cell below to catch up.")
+        print("\n   Type them in, run the cell above again (that's what saves the file),")
+        print("   then re-run this one. Or open a 🛟 cell to catch up.")
         return None
 
     c = _compile(src, exe)
@@ -148,9 +173,15 @@ def run(name, show_output=True):
 
     if r.returncode != 0:
         print("\n" + NO + " It stopped early (exit code " + str(r.returncode) + ").")
+        if not show_output:
+            # Make sure the program's own explanation is visible even when its
+            # full output was suppressed.
+            for line in out.strip().splitlines():
+                if "BEFORE the launch" in line or "CRASHED" in line or "FAILED" in line:
+                    print("   " + line.strip())
         if r.stderr.strip():
             print(textwrap.indent(r.stderr.strip(), "   "))
-        for h in CRASH_HINTS:
+        for h in _crash_hints(out):
             print("   " + DOT + " " + h)
         return out
 
@@ -160,8 +191,10 @@ def run(name, show_output=True):
 
 
 def solution(name):
-    """Print the finished version — the catch-up net."""
-    path = os.path.join(REPO, "lab", "solutions", PROGRAMS[name][1])
+    """Print the finished version of a build — the catch-up net."""
+    if name not in SOLUTIONS:
+        raise ValueError("unknown solution " + name + "; try " + ", ".join(SOLUTIONS))
+    path = os.path.join(REPO, "lab", "solutions", SOLUTIONS[name])
     print(open(path, encoding="utf-8").read())
 
 
@@ -176,62 +209,64 @@ def _fail(msg, *hints):
         print("   " + DOT + " " + h)
 
 
-def _check_gray(out):
-    import numpy as np
-    got = _read_ppm(os.path.join(BUILD, "gray.ppm"))
-    if got is None:
-        return _fail("build/gray.ppm wasn't written — did the program finish?")
-    src = _read_ppm(IMAGE)
-    ref = (0.21 * src[:, :, 0] + 0.72 * src[:, :, 1] + 0.07 * src[:, :, 2]).astype(np.uint8)
-    ref3 = np.dstack([ref, ref, ref])
+def _looks_like_blur(text):
+    """Is the student's file currently trying to be the blur?"""
+    return bool(re.search(r"#\s*define\s+BLUR_SIZE", text)) or text.count("for (") >= 2
 
-    if float(np.abs(got.astype(int) - ref3.astype(int)).mean()) <= 1.0:
-        _pass("Grey, and correct — all " + f"{src.shape[0] * src.shape[1]:,}"
-              + " pixels found themselves in the array.")
+
+def _radius(text):
+    m = re.search(r"#\s*define\s+BLUR_SIZE\s+(\d+)", text)
+    return int(m.group(1)) if m else 3
+
+
+def _check_main(out):
+    """One file, two possible right answers. Work out which one they're on."""
+    import numpy as np
+    got = _read_ppm(os.path.join(BUILD, "out.ppm"))
+    if got is None:
+        return _fail("build/out.ppm wasn't written — did the program get to saveImage?")
+    src = _read_ppm(IMAGE)
+    text = _last.get("source", "")
+    pixels = f"{src.shape[0] * src.shape[1]:,}"
+
+    grey = (0.21 * src[:, :, 0] + 0.72 * src[:, :, 1] + 0.07 * src[:, :, 2]).astype(np.uint8)
+    grey3 = np.dstack([grey, grey, grey])
+    radius = _radius(text)
+    blurred = _cpu_blur(src, radius)
+
+    d_grey = float(np.abs(got.astype(int) - grey3.astype(int)).mean())
+    d_blur = np.abs(got.astype(int) - blurred.astype(int))
+    inside = float(d_blur[radius:-radius, radius:-radius].mean())
+    edge_mask = np.ones(d_blur.shape[:2], dtype=bool)
+    edge_mask[radius:-radius, radius:-radius] = False
+    edge = float(d_blur[edge_mask].mean())
+
+    # ---- the two right answers ----
+    if d_grey <= 1.0:
+        _last["stage"] = "gray"
+        _pass("Greyscale, and correct — all " + pixels + " pixels found themselves in the array.")
+        print("   Five CUDA calls and one kernel. That was the whole program.")
         return
+    if inside <= 1.0 and edge <= 1.0:
+        _last["stage"] = "blur"
+        _pass("Blur, and it matches a CPU version exactly — edges included.")
+        print("   Same five calls as before. Only the kernel changed.")
+        print("   That ran on " + pixels + " threads at once.")
+        return
+
+    # ---- the wrong answers, most specific first ----
     if got.max() == 0:
-        return _fail("The picture is completely black.",
-                     "Either the kernel wrote nothing, or the result never came back.")
+        return _fail(
+            "The picture is completely black.",
+            "The GPU probably did the work — the CPU just never went to collect it.",
+            "Check STEP 4: cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost).",
+            "Destination first (the CPU's `out.data`), then the source on the GPU.")
     if np.array_equal(got, src):
         return _fail("The output is the same as the input — nothing happened.",
-                     "Check you're writing to `out`, not to `in`.")
-    _diagnose(got, ref3)
+                     "Check the kernel writes to `out`, not to `in`.")
 
-
-def _check_blur(out):
-    import numpy as np
-    got = _read_ppm(os.path.join(BUILD, "blur.ppm"))
-    if got is None:
-        return _fail("build/blur.ppm wasn't written — did the program finish?")
-    src = _read_ppm(IMAGE)
-
-    radius = 3
-    m = re.search(r"radius (\d+)", out)
-    if m:
-        radius = int(m.group(1))
-    ref = _cpu_blur(src, radius)
-
-    if got.max() == 0:
-        return _fail("The picture is completely black.",
-                     "Either the kernel wrote nothing, or the result never came back.")
-    if np.array_equal(got, src):
-        return _fail("The output is the same as the input — no blurring happened.",
-                     "Check you're writing to `out`, not to `in`.")
-
-    # The edge pixels are ~1% of the image, so a whole-picture average would
-    # happily hide a wrong edge case. Score the border separately.
-    d = np.abs(got.astype(int) - ref.astype(int))
-    inside = float(d[radius:-radius, radius:-radius].mean())
-    edge_mask = np.ones(d.shape[:2], dtype=bool)
-    edge_mask[radius:-radius, radius:-radius] = False
-    edge = float(d[edge_mask].mean())
-
-    if inside <= 1.0 and edge <= 1.0:
-        _pass("Your blur matches a CPU version exactly, edges included.")
-        print("   That ran on " + f"{src.shape[0] * src.shape[1]:,}" + " threads at once.")
-        return
-
-    if inside <= 1.0 < edge:
+    blur_attempt = _looks_like_blur(text)
+    if blur_attempt and inside <= 1.0 < edge:
         return _fail(
             "The middle is right, but the outermost " + str(radius) + " pixels are dark.",
             "A corner pixel has no neighbours above or to its left, so its",
@@ -239,7 +274,8 @@ def _check_blur(out):
             "Divide by `n` — the number you actually counted — not by "
             + str((2 * radius + 1) ** 2) + ".")
 
-    _diagnose(got, ref)
+    _last["stage"] = "blur" if blur_attempt else "gray"
+    _diagnose(got, blurred if blur_attempt else grey3)
 
 
 def _check_race(out):
@@ -263,7 +299,7 @@ def _check_race(out):
     print("   left there, instead of being sent across for every word.")
 
 
-_CHECKS = {"gray": _check_gray, "blur": _check_blur, "race": _check_race}
+_CHECKS = {"main": _check_main, "race": _check_race}
 
 
 def _diagnose(got, ref):
@@ -328,10 +364,12 @@ def _busiest_crop(img, size=320):
     return best
 
 
-def show(which="blur"):
+def show(which=None):
     """Before and after, plus a zoomed crop where you can really see it."""
     import matplotlib.pyplot as plt
-    after = _read_ppm(os.path.join(BUILD, which + ".ppm"))
+    # The student's program always writes build/out.ppm; the race writes blur.ppm.
+    fname = "blur.ppm" if which == "race" else "out.ppm"
+    after = _read_ppm(os.path.join(BUILD, fname))
     if after is None:
         print(NO + " Nothing to show yet — run the program above first.")
         return
@@ -339,7 +377,8 @@ def show(which="blur"):
 
     size = 320
     y, x = _busiest_crop(before, size)
-    label = {"blur": "blurred on the GPU", "gray": "greyscaled on the GPU"}.get(which, which)
+    stage = which if which in ("gray", "blur") else _last.get("stage", "")
+    label = {"blur": "blurred on the GPU", "gray": "greyscaled on the GPU"}.get(stage, "your output")
 
     fig, ax = plt.subplots(2, 2, figsize=(13, 9))
     ax[0][0].imshow(before)
