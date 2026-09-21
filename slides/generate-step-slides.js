@@ -66,9 +66,11 @@ const ifAt = blurKernelFull.findIndex((l) => /if \(col < w && row < h\)/.test(l)
 if (ifAt < 0) throw new Error("blur kernel: bounds-check line not found");
 const blurBody = dedent(stripTrailing(blurKernelFull.slice(ifAt + 1, -2)))  // drop `}` of if and of fn
   .filter((l) => l.trim() !== "");                                          // blank lines cost height
-const stepLines = (n) => dedent(stripTrailing(
-  between(gray, new RegExp("// STEP " + n + " "), /^\s*$|^\s*\/\/ STEP/))
-  .filter((l) => !/^\s*\/\/ STEP/.test(l)));
+const block = (marker) => noComments(dedent(stripTrailing(
+  between(gray, new RegExp("// " + marker + " "), /^\s*$|^\s*\/\/ (STEP|setup)|^\}/))
+  .filter((l) => !/^\s*\/\/ (STEP|setup)/.test(l))));
+const stepLines = (n) => block("STEP " + n);
+const setupLines = block("setup");
 
 // ---- primitives ----------------------------------------------------------
 function slide() {
@@ -169,7 +171,7 @@ function checkpoint(s, text, y = 6.35) {
 function insertTag(s, where) {
   // Where this slide goes in the live deck. Faint, bottom-right, delete after import.
   s.addText("insert: " + where, {
-    x: W - M - 6, y: 7.17, w: 6, h: 0.25, fontFace: F.mono, fontSize: 8,
+    x: W - M - 6, y: 7.24, w: 6, h: 0.22, fontFace: F.mono, fontSize: 8,
     color: C.faint, align: "right", isTextBox: true, margin: 0,
   });
 }
@@ -261,9 +263,10 @@ function stepSlide(o) {
 /* ═══════════════════════════════════ STEP 1 */
 stepSlide({
   kicker: "STEP 1 · cudaMalloc", title: "Ask the GPU for memory",
-  code: ["unsigned char *in_d, *out_d;", "", ...stepLines(1)],
-  codeH: 2.2, codeSize: 13,
+  code: [...setupLines, "", ...stepLines(1)],
+  codeH: 2.5, codeSize: 13,
   read: [
+    "loadImage / makeImage — the photo into CPU memory, and an empty picture the same size. Helpers from lab/gpulab.h, not CUDA.",
     "&in_d — the address OF our variable, so cudaMalloc can write the GPU address into it.",
     "img.bytes — how many: 1920 × 1280 × 3 = 7,372,800.",
     "Twice: one block for the photo, one for the result.",
@@ -307,8 +310,7 @@ stepSlide({
 /* ═══════════════════════════════════ STEP 3 · launch */
 stepSlide({
   kicker: "STEP 3 · THE LAUNCH", title: "Decide how many threads, then go",
-  code: [...stepLines(3).filter((l) => !/checkKernel/.test(l)),
-         'checkKernel("imageKernel");     // given'],
+  code: stepLines(3),
   codeH: 2.0, codeSize: 12.5, codeW: 7.5,
   read: [
     "block = 16 × 16 = 256 threads, in a square tile.",
@@ -358,7 +360,7 @@ stepSlide({
 /* ═══════════════════════════════════ STEP 4 */
 stepSlide({
   kicker: "STEP 4 · cudaMemcpy ←", title: "Bring the answer home",
-  code: [...stepLines(4), 'saveImage(out, "build/out.ppm");   // given'],
+  code: stepLines(4),
   codeH: 1.4, codeSize: 13,
   read: [
     "The same call, reversed. Destination is now the CPU's out.data.",
@@ -380,11 +382,11 @@ stepSlide({
 /* ═══════════════════════════════════ STEP 5 */
 stepSlide({
   kicker: "STEP 5 · cudaFree", title: "Give the memory back",
-  code: [...stepLines(5), "freeImage(img);                   // given", "freeImage(out);                   // given"],
-  codeH: 1.65, codeSize: 13,
+  code: stepLines(5),
+  codeH: 1.9, codeSize: 13,
   read: [
     "One cudaFree per cudaMalloc. Nothing collects GPU memory for you.",
-    "The two freeImage lines are the CPU side — given, not CUDA.",
+    "freeImage is the CPU side — the helper, not CUDA. Then return 0.",
   ],
   readSize: 14,
   checkpoint: "Run the cell, then lab.run().  Expect: ✅ Greyscale, and correct — then lab.show().",
@@ -398,31 +400,36 @@ stepSlide({
     "Recovery: lifebelt. Anyone still broken should paste it now, before Build 2.",
 });
 
-/* ═══════════════════════════════════ BUILD 2 · STEP 3 again (blur) */
+/* ═══════════════════════════════════ BUILD 2 · the blur kernel */
+// The student copies the ENTIRE function from this slide into student/blur.cu,
+// whose main() is already written. Blank lines dropped to fit.
+const blurFn = blurKernelFull.filter((l) => l.trim() !== "");
 stepSlide({
-  kicker: "BUILD 2 · STEP 3 AGAIN", title: "Same file. Change only the kernel.",
-  code: ["#define BLUR_SIZE 3          // under the #include, at the top",
-         "// ...then replace everything INSIDE  if (col < w && row < h) {  with:",
-         ...blurBody],
-  codeH: 4.35, codeSize: 10.5, codeW: 7.9, checkpointY: 6.5,
+  kicker: "BUILD 2 · THE KERNEL", title: "New file, same main(). Copy this function.",
+  code: blurFn,
+  codeH: 4.5, codeSize: 9.2, codeW: 8.2, checkpointY: 6.6,
   read: [
-    "Add the #define at the top.",
-    "col, row and the if are already there — leave them.",
-    "Walk the square around me. Skip neighbours that fall off the picture. Count the ones I used.",
+    "student/blur.cu — main() is already there. This goes above it.",
+    "col, row, the if — same start as greyscale.",
+    "Walk the square around me. Skip neighbours off the picture. Count the ones I used.",
     "Divide by n — what I counted — not by 49.",
-    "Every CUDA call in main(): untouched.",
   ],
-  readSize: 13,
-  checkpoint: "Run the cell, then lab.run().  Expect: ✅ Blur, edges included — then lab.show().",
+  readSize: 12.5,
+  checkpoint: "Run the cell, then lab.run(\"blur\").  Expect: ✅ Blur, edges included — then lab.show().",
   where: "after your Build 2 divider",
-  notes:
-    "Scroll to main() first and say 'nothing down here changes'. That's the lesson.\n\n" +
-    "Concept: the host code is a reusable shell. Only what one thread does is different.\n" +
-    "Expected: '✅ Blur, and it matches a CPU version exactly - edges included.'\n" +
-    "Pause: on 'divide by n'. Ask why not 49. Someone will get it - corners.\n" +
-    "Stumble: /49 - the check says 'the outermost 3 pixels are dark'. Or forgetting the " +
-    "#define - won't compile, names BLUR_SIZE.\n" +
+  notes: [
+    "This whole function gets typed into student/blur.cu, above the main() that is",
+    "already written there. Open the cell first and scroll through main(): 'you typed",
+    "exactly this twenty minutes ago - only the kernel's name is different.'",
+    "",
+    "Concept: the host code is a reusable shell. What the GPU DOES lives in the kernel.",
+    "Expected: '✅ Blur, and it matches a CPU version exactly - edges included.'",
+    "Pause: on 'divide by n'. Ask why not 49. Someone will get it - corners.",
+    "Stumble: /49 - the check says 'the outermost 3 pixels are dark'. A greyscale kernel",
+    "pasted here by mistake - the check says 'greyscale, not blurred'. Wrong function name -",
+    "won't compile; main() calls blurKernel.",
     "Then: BLUR_SIZE 15, re-run. Twenty times the work, same instant.",
+  ].join("\n"),
 });
 
 const out = path.join(__dirname, "step-slides.pptx");

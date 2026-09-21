@@ -33,11 +33,11 @@ once**.
 
 ### How this works
 
-I'll build the code live and you follow along in your own copy. **One file,
-two stages** — you keep editing the same cell:
+I'll build the code live and you follow along in your own copy. Two builds:
 
-1. **Greyscale** — every CUDA call a program needs, on the simplest possible job.
-2. **Blur** — go back to that file and change only the kernel.
+1. **Greyscale** — you type the whole program: every CUDA call, and the kernel.
+2. **Blur** — a new file with the same `main()` already written; you type only
+   the kernel, straight from the slide.
 
 Then we'll race it against a CPU and see what that has to do with ChatGPT.
 
@@ -111,25 +111,25 @@ md("""
 ---
 # 2 · Build 1: greyscale
 
-**One file, all session.** The cell below is `student/main.cu`. We build the
-greyscale program in it now, and later we come back and turn the same file into
-a blur. Every time you change it: run the cell (that saves the file), then run
-the check cell under it.
+The cell below is `student/main.cu`. Every time you change it: run the cell
+(that saves the file), then run the check cell under it.
 
-Reading and saving the photo is ordinary file I/O, so those lines are given.
-**Everything CUDA, we type** — each piece has a STEP slide with the exact line on it:
+**`main()` starts empty and we type all of it.** Each piece has a STEP slide
+with the exact lines on it. Four of those lines call small helpers from
+`lab/gpulab.h` — `loadImage`, `makeImage`, `saveImage`, `freeImage` — because
+reading a `.ppm` isn't CUDA. Everything else is.
 
 | STEP | what you type | what it does |
 |---|---|---|
-| 1 | `cudaMalloc(&in_d, img.bytes);` (twice) | asks the GPU for memory; writes the GPU address into `in_d` |
+| 1 | `loadImage()`, `makeImage(...)`, the two pointers, then `cudaMalloc(&in_d, img.bytes);` ×2 | the photo into CPU memory; ask the GPU for memory and write its address into `in_d` |
 | 2 | `cudaMemcpy(in_d, img.data, img.bytes, cudaMemcpyHostToDevice);` | destination, source, how many, which way |
-| 3 | `dim3 block(16, 16); dim3 grid(...); imageKernel<<<grid, block>>>(...);` | how many threads, then run it |
-| 3 | the kernel | what one thread does with its one pixel |
-| 4 | `cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost);` | the same call, reversed |
-| 5 | `cudaFree(in_d);` (twice) | give it back — nothing does this for you |
+| 3 | `dim3 block(16, 16); dim3 grid(...); imageKernel<<<grid, block>>>(...); checkKernel(...)` | how many threads, run it, then wait and ask if it worked |
+| 3 | the kernel body | what one thread does with its one pixel |
+| 4 | `cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost); saveImage(...)` | the same call, reversed; then write the file |
+| 5 | `cudaFree` ×2, `freeImage` ×2, `return 0;` | give it all back — nothing does this for you |
 
-Type them in file order or step order — it doesn't matter, nothing runs until you
-run the cell.
+Type them in order. Nothing runs until you run the cell, so a half-typed
+`main()` is fine while we go.
 """)
 
 code('''%%writefile student/main.cu
@@ -137,43 +137,22 @@ code('''%%writefile student/main.cu
 
 // ---------------------------------------------------------------
 //  STEP 3, the kernel — runs once per thread, each on its own pixel.
-//  Greyscale first. Later we come back and turn this into a blur.
 // ---------------------------------------------------------------
 __global__ void imageKernel(unsigned char* out, unsigned char* in, int w, int h) {
 
-    /* YOUR CODE: STEP 3 — the kernel, about 8 lines */
+    /* YOUR CODE: STEP 3 — the kernel body, about 8 lines */
 
 }
 
 // ---------------------------------------------------------------
-//  The host code. Loading and saving the photo is plain file I/O
-//  (given, from lab/gpulab.h). The CUDA calls are yours.
+//  The host code — the five steps. All of it is typed, from the
+//  STEP slides. (loadImage, makeImage, saveImage and freeImage are
+//  small helpers that live in lab/gpulab.h.)
 // ---------------------------------------------------------------
 int main() {
-    Image img = loadImage();                  // given
-    Image out = makeImage(img.w, img.h);      // given
 
-    unsigned char *in_d, *out_d;              // will hold addresses in GPU memory
+    /* YOUR CODE: STEP 1 to STEP 5 — setup, malloc, copy over, launch, copy back, free */
 
-    // STEP 1 — ask the GPU for its own memory: one block for the photo, one for the result
-    /* YOUR CODE: STEP 1 — cudaMalloc, twice */
-
-    // STEP 2 — ship the photo across: CPU -> GPU
-    /* YOUR CODE: STEP 2 — cudaMemcpy, host to device */
-
-    // STEP 3 — decide how many threads, then launch one per pixel
-    /* YOUR CODE: STEP 3 — dim3 block, dim3 grid, then the <<< >>> launch */
-    checkKernel("imageKernel");               // given: waits for the GPU, asks if it worked
-
-    // STEP 4 — bring the answer home: GPU -> CPU
-    /* YOUR CODE: STEP 4 — cudaMemcpy, device to host */
-    saveImage(out, "build/out.ppm");          // given
-
-    // STEP 5 — give the GPU memory back. Nothing does this for you.
-    /* YOUR CODE: STEP 5 — cudaFree, twice */
-    freeImage(img);                           // given
-    freeImage(out);
-    return 0;
 }''')
 
 md("""
@@ -203,46 +182,87 @@ processor with thousands of tiny workers.
 # ═════════════════════════════════════════════════════ part 3: build 2
 md("""
 ---
-# 3 · Build 2: blur — same file, new kernel
-
-**Don't make a new cell. Scroll back up to `student/main.cu`.**
+# 3 · Build 2: blur — new file, same `main()`
 
 A blur replaces each pixel with the **average of the pixels around it** — for
-radius 3, the 7×7 square centred on it. Two changes to the file, and *only* two:
+radius 3, the 7×7 square centred on it.
 
-1. Add `#define BLUR_SIZE 3` near the top, under the `#include`.
-2. Replace the **body** of `imageKernel` with the blur (STEP 3 slide, blur
-   version). The first three lines — `col`, `row`, the `if` — stay exactly as
-   they are.
+This time the file is `student/blur.cu`, and **`main()` is already written** —
+it is the same five steps you just typed, character for character, with the
+kernel's name changed. Look at it and check. **The only thing you type in this
+file is the kernel**: copy the whole function from the slide into the marked
+spot.
 
-**Watch what you are *not* changing.** Every CUDA call in `main()` — the mallocs,
-both memcpys, the launch, the frees — is untouched. The host code doesn't care
-what the kernel does.
-
-The one wrinkle: a pixel in the corner has no neighbours above or to its left.
-So check each neighbour before using it, count how many you actually found, and
-divide by **that** — not by 49. Divide by 49 and the edges come out dark.
-
-When you've changed it, run that cell again, then come back and run this:
+One wrinkle inside it: a pixel in the corner has no neighbours above or to its
+left. So the kernel checks each neighbour before using it, counts how many it
+actually found, and divides by **that** — not by 49. Divide by 49 and the edges
+come out dark.
 """)
 
-code('lab.run()')
+code('''%%writefile student/blur.cu
+#include "lab/gpulab.h"
+
+#define BLUR_SIZE 3     // radius -> a 7x7 box around each pixel
+
+// ---------------------------------------------------------------
+//  THE KERNEL — copy the whole function from the slide here.
+// ---------------------------------------------------------------
+
+/* YOUR CODE: the blur kernel — __global__ void blurKernel(...) { ... } */
+
+// ---------------------------------------------------------------
+//  The host code — the same five steps as greyscale, already written.
+//  Nothing to type below this line.
+// ---------------------------------------------------------------
+int main() {
+    Image img = loadImage();
+    Image out = makeImage(img.w, img.h);
+    unsigned char *in_d, *out_d;
+
+    // STEP 1
+    cudaMalloc(&in_d,  img.bytes);
+    cudaMalloc(&out_d, img.bytes);
+
+    // STEP 2
+    cudaMemcpy(in_d, img.data, img.bytes, cudaMemcpyHostToDevice);
+
+    // STEP 3
+    dim3 block(16, 16);
+    dim3 grid((img.w + 15) / 16, (img.h + 15) / 16);
+    blurKernel<<<grid, block>>>(out_d, in_d, img.w, img.h);
+    checkKernel("blurKernel");
+
+    // STEP 4
+    cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost);
+    saveImage(out, "build/out.ppm");
+
+    // STEP 5
+    cudaFree(in_d);
+    cudaFree(out_d);
+    freeImage(img);
+    freeImage(out);
+    return 0;
+}''')
+
+code('lab.run("blur")')
 catchup("blur", "blur program")
 
 code('lab.show()')
 
 md("""
-### 🎉 Same program, different picture
+### 🎉 Same five steps, different picture
 
 Look at the bottom row — the zoomed-in crop, where the softening is obvious. (On
 the full photo it's real but easy to miss; a 7-pixel blur on a 1920-pixel-wide
 picture gets subtle once it's shrunk to fit a screen.)
 
+Scroll back up and compare the two `main()`s. They are the same program. The
+host code is a shell; what the GPU actually *does* lives entirely in the kernel.
+
 **Try this:** change `#define BLUR_SIZE 3` to `15`, re-run the cell and the
 check. Each thread is now averaging 961 pixels instead of 49 — twenty times the
 work — and it still finishes instantly. Try `31` if you like.
 """)
-
 
 # ═════════════════════════════════════════════════════ part 4: the race
 md("""
