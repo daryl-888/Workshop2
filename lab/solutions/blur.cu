@@ -43,10 +43,10 @@ __global__ void imageKernel(unsigned char* out, unsigned char* in, int w, int h)
 //  The host code — IDENTICAL to greyscale. Not one character changed.
 // ---------------------------------------------------------------
 int main() {
-    Image img = loadImage();                  // given
-    Image out = makeImage(img.w, img.h);      // given
-
-    unsigned char *in_d, *out_d;              // will hold addresses in GPU memory
+    // setup — the photo into CPU memory, an empty picture the same size, two GPU pointers
+    Image img = loadImage();
+    Image out = makeImage(img.w, img.h);
+    unsigned char *in_d, *out_d;
 
     // STEP 1 — ask the GPU for its own memory: one block for the photo, one for the result
     cudaMalloc(&in_d,  img.bytes);
@@ -55,20 +55,20 @@ int main() {
     // STEP 2 — ship the photo across: CPU -> GPU
     cudaMemcpy(in_d, img.data, img.bytes, cudaMemcpyHostToDevice);
 
-    // STEP 3 — decide how many threads, then launch one per pixel
+    // STEP 3 — decide how many threads, launch one per pixel, then wait and ask if it worked
     dim3 block(16, 16);
     dim3 grid((img.w + 15) / 16, (img.h + 15) / 16);
     imageKernel<<<grid, block>>>(out_d, in_d, img.w, img.h);
-    checkKernel("imageKernel");               // given: waits for the GPU, asks if it worked
+    checkKernel("imageKernel");
 
-    // STEP 4 — bring the answer home: GPU -> CPU
+    // STEP 4 — bring the answer home: GPU -> CPU, then save it
     cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost);
-    saveImage(out, "build/out.ppm");          // given
+    saveImage(out, "build/out.ppm");
 
-    // STEP 5 — give the GPU memory back. Nothing does this for you.
+    // STEP 5 — give the memory back. Nothing does this for you.
     cudaFree(in_d);
     cudaFree(out_d);
-    freeImage(img);                           // given
+    freeImage(img);
     freeImage(out);
     return 0;
 }

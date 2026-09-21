@@ -116,20 +116,22 @@ greyscale program in it now, and later we come back and turn the same file into
 a blur. Every time you change it: run the cell (that saves the file), then run
 the check cell under it.
 
-Reading and saving the photo is ordinary file I/O, so those lines are given.
-**Everything CUDA, we type** — each piece has a STEP slide with the exact line on it:
+**`main()` starts empty and we type all of it.** Each piece has a STEP slide
+with the exact lines on it. Four of those lines call small helpers from
+`lab/gpulab.h` — `loadImage`, `makeImage`, `saveImage`, `freeImage` — because
+reading a `.ppm` isn't CUDA. Everything else is.
 
 | STEP | what you type | what it does |
 |---|---|---|
-| 1 | `cudaMalloc(&in_d, img.bytes);` (twice) | asks the GPU for memory; writes the GPU address into `in_d` |
+| 1 | `loadImage()`, `makeImage(...)`, the two pointers, then `cudaMalloc(&in_d, img.bytes);` ×2 | the photo into CPU memory; ask the GPU for memory and write its address into `in_d` |
 | 2 | `cudaMemcpy(in_d, img.data, img.bytes, cudaMemcpyHostToDevice);` | destination, source, how many, which way |
-| 3 | `dim3 block(16, 16); dim3 grid(...); imageKernel<<<grid, block>>>(...);` | how many threads, then run it |
-| 3 | the kernel | what one thread does with its one pixel |
-| 4 | `cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost);` | the same call, reversed |
-| 5 | `cudaFree(in_d);` (twice) | give it back — nothing does this for you |
+| 3 | `dim3 block(16, 16); dim3 grid(...); imageKernel<<<grid, block>>>(...); checkKernel(...)` | how many threads, run it, then wait and ask if it worked |
+| 3 | the kernel body | what one thread does with its one pixel |
+| 4 | `cudaMemcpy(out.data, out_d, img.bytes, cudaMemcpyDeviceToHost); saveImage(...)` | the same call, reversed; then write the file |
+| 5 | `cudaFree` ×2, `freeImage` ×2, `return 0;` | give it all back — nothing does this for you |
 
-Type them in file order or step order — it doesn't matter, nothing runs until you
-run the cell.
+Type them in order. Nothing runs until you run the cell, so a half-typed
+`main()` is fine while we go.
 """)
 
 code('''%%writefile student/main.cu
@@ -141,39 +143,19 @@ code('''%%writefile student/main.cu
 // ---------------------------------------------------------------
 __global__ void imageKernel(unsigned char* out, unsigned char* in, int w, int h) {
 
-    /* YOUR CODE: STEP 3 — the kernel, about 8 lines */
+    /* YOUR CODE: STEP 3 — the kernel body, about 8 lines */
 
 }
 
 // ---------------------------------------------------------------
-//  The host code. Loading and saving the photo is plain file I/O
-//  (given, from lab/gpulab.h). The CUDA calls are yours.
+//  The host code — the five steps. All of it is typed, from the
+//  STEP slides. (loadImage, makeImage, saveImage and freeImage are
+//  small helpers that live in lab/gpulab.h.)
 // ---------------------------------------------------------------
 int main() {
-    Image img = loadImage();                  // given
-    Image out = makeImage(img.w, img.h);      // given
 
-    unsigned char *in_d, *out_d;              // will hold addresses in GPU memory
+    /* YOUR CODE: STEP 1 to STEP 5 — setup, malloc, copy over, launch, copy back, free */
 
-    // STEP 1 — ask the GPU for its own memory: one block for the photo, one for the result
-    /* YOUR CODE: STEP 1 — cudaMalloc, twice */
-
-    // STEP 2 — ship the photo across: CPU -> GPU
-    /* YOUR CODE: STEP 2 — cudaMemcpy, host to device */
-
-    // STEP 3 — decide how many threads, then launch one per pixel
-    /* YOUR CODE: STEP 3 — dim3 block, dim3 grid, then the <<< >>> launch */
-    checkKernel("imageKernel");               // given: waits for the GPU, asks if it worked
-
-    // STEP 4 — bring the answer home: GPU -> CPU
-    /* YOUR CODE: STEP 4 — cudaMemcpy, device to host */
-    saveImage(out, "build/out.ppm");          // given
-
-    // STEP 5 — give the GPU memory back. Nothing does this for you.
-    /* YOUR CODE: STEP 5 — cudaFree, twice */
-    freeImage(img);                           // given
-    freeImage(out);
-    return 0;
 }''')
 
 md("""

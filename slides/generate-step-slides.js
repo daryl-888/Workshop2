@@ -66,9 +66,11 @@ const ifAt = blurKernelFull.findIndex((l) => /if \(col < w && row < h\)/.test(l)
 if (ifAt < 0) throw new Error("blur kernel: bounds-check line not found");
 const blurBody = dedent(stripTrailing(blurKernelFull.slice(ifAt + 1, -2)))  // drop `}` of if and of fn
   .filter((l) => l.trim() !== "");                                          // blank lines cost height
-const stepLines = (n) => dedent(stripTrailing(
-  between(gray, new RegExp("// STEP " + n + " "), /^\s*$|^\s*\/\/ STEP/))
-  .filter((l) => !/^\s*\/\/ STEP/.test(l)));
+const block = (marker) => noComments(dedent(stripTrailing(
+  between(gray, new RegExp("// " + marker + " "), /^\s*$|^\s*\/\/ (STEP|setup)|^\}/))
+  .filter((l) => !/^\s*\/\/ (STEP|setup)/.test(l))));
+const stepLines = (n) => block("STEP " + n);
+const setupLines = block("setup");
 
 // ---- primitives ----------------------------------------------------------
 function slide() {
@@ -261,9 +263,10 @@ function stepSlide(o) {
 /* ═══════════════════════════════════ STEP 1 */
 stepSlide({
   kicker: "STEP 1 · cudaMalloc", title: "Ask the GPU for memory",
-  code: ["unsigned char *in_d, *out_d;", "", ...stepLines(1)],
-  codeH: 2.2, codeSize: 13,
+  code: [...setupLines, "", ...stepLines(1)],
+  codeH: 2.5, codeSize: 13,
   read: [
+    "loadImage / makeImage — the photo into CPU memory, and an empty picture the same size. Helpers from lab/gpulab.h, not CUDA.",
     "&in_d — the address OF our variable, so cudaMalloc can write the GPU address into it.",
     "img.bytes — how many: 1920 × 1280 × 3 = 7,372,800.",
     "Twice: one block for the photo, one for the result.",
@@ -307,8 +310,7 @@ stepSlide({
 /* ═══════════════════════════════════ STEP 3 · launch */
 stepSlide({
   kicker: "STEP 3 · THE LAUNCH", title: "Decide how many threads, then go",
-  code: [...stepLines(3).filter((l) => !/checkKernel/.test(l)),
-         'checkKernel("imageKernel");     // given'],
+  code: stepLines(3),
   codeH: 2.0, codeSize: 12.5, codeW: 7.5,
   read: [
     "block = 16 × 16 = 256 threads, in a square tile.",
@@ -358,7 +360,7 @@ stepSlide({
 /* ═══════════════════════════════════ STEP 4 */
 stepSlide({
   kicker: "STEP 4 · cudaMemcpy ←", title: "Bring the answer home",
-  code: [...stepLines(4), 'saveImage(out, "build/out.ppm");   // given'],
+  code: stepLines(4),
   codeH: 1.4, codeSize: 13,
   read: [
     "The same call, reversed. Destination is now the CPU's out.data.",
@@ -380,11 +382,11 @@ stepSlide({
 /* ═══════════════════════════════════ STEP 5 */
 stepSlide({
   kicker: "STEP 5 · cudaFree", title: "Give the memory back",
-  code: [...stepLines(5), "freeImage(img);                   // given", "freeImage(out);                   // given"],
-  codeH: 1.65, codeSize: 13,
+  code: stepLines(5),
+  codeH: 1.9, codeSize: 13,
   read: [
     "One cudaFree per cudaMalloc. Nothing collects GPU memory for you.",
-    "The two freeImage lines are the CPU side — given, not CUDA.",
+    "freeImage is the CPU side — the helper, not CUDA. Then return 0.",
   ],
   readSize: 14,
   checkpoint: "Run the cell, then lab.run().  Expect: ✅ Greyscale, and correct — then lab.show().",

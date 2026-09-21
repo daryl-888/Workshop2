@@ -85,10 +85,17 @@ def main():
         return report()
     tpl = cells[0].split("\n", 1)[1]
     holes = lab._unwritten(tpl)
-    steps = sorted(set(re.findall(r"STEP (\d)", " ".join(holes))))
-    print("   " + str(len(holes)) + " empty markers covering STEP " + ", ".join(steps))
-    if steps != ["1", "2", "3", "4", "5"]:
-        problems.append("cell markers should cover STEP 1-5, found " + str(steps))
+    print("   " + str(len(holes)) + " empty markers: " + " | ".join(h.strip() for h in holes))
+    if len(holes) != 2 or not any("kernel" in h for h in holes) \
+            or not any("STEP 1 to STEP 5" in h for h in holes):
+        problems.append("cell should have exactly two markers: the kernel body and all of main()")
+    # main() must be genuinely empty apart from its marker
+    m = re.search(r"int main\(\) \{(.*?)\n\}", tpl, re.S)
+    body = re.sub(r"/\*.*?\*/", "", m.group(1), flags=re.S).strip() if m else "?"
+    if body:
+        problems.append("main() is not blank - found: " + body[:60])
+    else:
+        print("   ok  main() is blank")
     open(STUDENT_MAIN, "w", encoding="utf-8").write(tpl)
     if lab.run(show_output=False) is not None:
         problems.append("run() accepted the cell with all steps empty")

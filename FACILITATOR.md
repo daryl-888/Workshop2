@@ -15,7 +15,7 @@ change.
 | | Time | What |
 |---|---|---|
 | Slides | ~30 min | why GPUs exist, the five steps, threads, and what we're about to build |
-| Live build 1 | ~14 min | every CUDA call + the greyscale kernel, in one file |
+| Live build 1 | ~16 min | all of `main()` + the greyscale kernel, in one file |
 | Live build 2 | ~8 min | same file, replace the kernel body |
 | Run the race | ~5 min | CPU vs GPU, and where the time goes |
 | The payoff | ~7 min | blur → matrix multiply → language models |
@@ -39,9 +39,12 @@ one simple sum — and a language model is a mountain of those sums."**
 ## The live build
 
 **One file, all session:** `student/main.cu`, in one Colab cell. Students build
-greyscale in it, then go back and turn the same file into a blur. Reading and
-saving the photo is given (it's file I/O, not CUDA). **Every CUDA call is
-typed** — the five steps in `main()` and the kernel.
+greyscale in it, then go back and turn the same file into a blur. **`main()`
+starts empty and every line of it is typed** — the setup, the five CUDA steps,
+`return 0`. The kernel signature is given; its body is typed. The only things
+not written by hand are four small helpers that live in `lab/gpulab.h`
+(`loadImage`, `makeImage`, `saveImage`, `freeImage`) — students still type the
+calls to them.
 
 Each typed piece has a STEP slide with the exact code on it. Students type from
 the slide; you narrate. If someone runs the cell early they get *"Some parts are
@@ -55,12 +58,12 @@ Have the five-steps slide in your head; the STEP slides carry the code. In order
 | STEP slide | You type | You say |
 |---|---|---|
 | device pointers | *(nothing — 30 s)* | "`in_d` is an ordinary variable. Its *value* is an address on the other machine." |
-| 1 · cudaMalloc | `cudaMalloc(&in_d, img.bytes);` ×2 | "The **address of** in_d, so CUDA can write the GPU address into it. Say the & out loud." |
+| 1 · cudaMalloc | `Image img = loadImage();` `Image out = makeImage(img.w, img.h);` `unsigned char *in_d, *out_d;` then `cudaMalloc(&in_d, img.bytes);` ×2 | "Photo in, empty picture out, two pointers. Then: the **address of** in_d, so CUDA can write the GPU address into it. Say the & out loud." |
 | 2 · cudaMemcpy → | one line | "Where to, where from, how much, which way. Destination **first**." |
-| 3 · the launch | `dim3 block`, `dim3 grid`, `<<< >>>` | "16×16 is 256. 120 across, 80 down. 2,457,600. `+15 /16` rounds up." |
+| 3 · the launch | `dim3 block`, `dim3 grid`, `<<< >>>`, `checkKernel(...)` | "16×16 is 256. 120 across, 80 down. 2,457,600. `+15 /16` rounds up. The last line waits and asks if it worked." |
 | 3 · the kernel | the body | "Which pixel am I, am I on the picture, where does it live — then the grey line." |
-| 4 · cudaMemcpy ← | one line | "Same call, reversed. Skip it and you get black — no error." |
-| 5 · cudaFree | ×2 | "One free per malloc. Nothing does this for you." Then **run**. |
+| 4 · cudaMemcpy ← | one line, then `saveImage(out, "build/out.ppm");` | "Same call, reversed. Skip it and you get black — no error. Then write the file." |
+| 5 · cudaFree | ×2, `freeImage` ×2, `return 0;` | "One free per malloc. Nothing does this for you." Then **run**. |
 
 Expect `✅ Greyscale, and correct`. Then `lab.show()`. Let them look.
 
